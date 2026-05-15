@@ -12,6 +12,8 @@ const supabase = createClient(
   "sb_publishable_7kantdqRUpAtsZ2R9Iq3zA_fGrg-6Za"
 );
 
+const LOGIN_PASSWORD = "reservia2024";
+
 const STATUS = {
   confirmed: { label: "Confirmada", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", icon: CheckCircle2 },
   pending:   { label: "Pendiente",  color: "#d97706", bg: "#fffbeb", border: "#fde68a", icon: AlertCircle  },
@@ -21,12 +23,14 @@ const STATUS = {
 const nav = [
   { id: "overview",     Icon: LayoutDashboard, label: "Resumen"  },
   { id: "reservations", Icon: CalendarDays,    label: "Reservas" },
-  { id: "reviews",      Icon: Star,            label: "Reseñas"  },
   { id: "whatsapp",     Icon: MessageCircle,   label: "WhatsApp" },
   { id: "settings",     Icon: Settings,        label: "Config"   },
 ];
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [tab, setTab] = useState("overview");
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +45,7 @@ export default function App() {
     setLoading(false);
   }
 
-  useEffect(() => { loadReservations(); }, []);
+  useEffect(() => { if (loggedIn) loadReservations(); }, [loggedIn]);
 
   async function confirmRes(id) {
     await supabase.from("reservations").update({ status: "confirmed" }).eq("id", id);
@@ -53,13 +57,53 @@ export default function App() {
     loadReservations();
   }
 
+  function handleLogin() {
+    if (password === LOGIN_PASSWORD) {
+      setLoggedIn(true);
+      setLoginError("");
+    } else {
+      setLoginError("Contraseña incorrecta");
+    }
+  }
+
+  if (!loggedIn) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 4px 24px #0000000a" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+            <div style={{ width: 40, height: 40, background: "#111827", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Utensils size={20} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>ReservIA</div>
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</div>
+            </div>
+          </div>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Contraseña</label>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleLogin()}
+            placeholder="Introduce tu contraseña"
+            style={{ width: "100%", padding: "10px 14px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, marginBottom: 12, fontFamily: "system-ui", boxSizing: "border-box" }}
+          />
+          {loginError && <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 12 }}>{loginError}</div>}
+          <button onClick={handleLogin} style={{ width: "100%", padding: 11, background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "system-ui" }}>
+            Entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const today = new Date().toISOString().split("T")[0];
   const todayRes = reservations.filter(r => r.date === today);
   const confirmed = reservations.filter(r => r.status === "confirmed").length;
   const pending = reservations.filter(r => r.status === "pending").length;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13.5px; font-weight: 500; color: #6b7280; border: none; background: none; width: 100%; text-align: left; }
@@ -77,7 +121,6 @@ export default function App() {
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
       `}</style>
 
-      {/* SIDEBAR */}
       <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 6px", marginBottom: 28 }}>
           <div style={{ width: 32, height: 32, background: "#111827", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -95,16 +138,11 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <Zap size={12} color="#f59e0b" fill="#f59e0b" />
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#111827" }}>Plan Pro</span>
-          </div>
-          <div style={{ fontSize: 11, color: "#6b7280" }}>299€/mes · activo</div>
-        </div>
+        <button onClick={() => setLoggedIn(false)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer", fontFamily: "system-ui" }}>
+          Cerrar sesión
+        </button>
       </aside>
 
-      {/* MAIN */}
       <main style={{ flex: 1, overflowY: "auto" }}>
         <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(249,250,251,0.9)", borderBottom: "1px solid #e5e7eb", padding: "13px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -116,15 +154,14 @@ export default function App() {
 
         <div style={{ padding: "24px 28px" }}>
 
-          {/* OVERVIEW */}
           {tab === "overview" && (
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
                 {[
-                  { label: "Reservas hoy",   value: todayRes.length,  Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
-                  { label: "Confirmadas",     value: confirmed,         Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
-                  { label: "Pendientes",      value: pending,           Icon: AlertCircle,  color: "#f59e0b", bg: "#fffbeb" },
-                  { label: "Total reservas",  value: reservations.length, Icon: TrendingUp, color: "#8b5cf6", bg: "#f5f3ff" },
+                  { label: "Reservas hoy",   value: todayRes.length,      Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
+                  { label: "Confirmadas",     value: confirmed,             Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
+                  { label: "Pendientes",      value: pending,               Icon: AlertCircle,  color: "#f59e0b", bg: "#fffbeb" },
+                  { label: "Total reservas",  value: reservations.length,   Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
                 ].map((s, i) => (
                   <div key={i} className="stat-card">
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
@@ -138,7 +175,6 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
               <div className="card">
                 <div className="card-header">
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Reservas de hoy</span>
@@ -162,9 +198,7 @@ export default function App() {
                         <Users size={12} color="#9ca3af" />
                         <span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests} personas</span>
                       </div>
-                      <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>
-                        {S.label}
-                      </span>
+                      <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
                       <div style={{ display: "flex", gap: 6 }}>
                         {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>Confirmar</button>}
                         {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>Cancelar</button>}
@@ -176,7 +210,6 @@ export default function App() {
             </div>
           )}
 
-          {/* RESERVATIONS */}
           {tab === "reservations" && (
             <div className="card">
               <div className="card-header">
@@ -203,9 +236,7 @@ export default function App() {
                       <Users size={11} color="#9ca3af" />
                       <span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests} personas</span>
                     </div>
-                    <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>
-                      {S.label}
-                    </span>
+                    <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
                     <div style={{ display: "flex", gap: 5 }}>
                       {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>✓</button>}
                       {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>✕</button>}
@@ -216,10 +247,10 @@ export default function App() {
             </div>
           )}
 
-          {/* WHATSAPP */}
           {tab === "whatsapp" && (
             <div className="card">
-              <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Estado del chatbot</span>
+              <div className="card-header">
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Estado del chatbot</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>● Activo</span>
               </div>
               {[
@@ -235,13 +266,12 @@ export default function App() {
             </div>
           )}
 
-          {/* SETTINGS */}
           {tab === "settings" && (
             <div className="card">
               <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Configuración</span></div>
               {[
-                { Icon: Utensils, label: "Restaurante",     value: "Restaurante Demo" },
-                { Icon: Phone,    label: "WhatsApp",        value: "+1 415 523 8886"  },
+                { Icon: Utensils, label: "Restaurante",      value: "Restaurante Demo" },
+                { Icon: Phone,    label: "WhatsApp",         value: "+1 415 523 8886"  },
                 { Icon: Timer,    label: "Duración reserva", value: "90 minutos"       },
               ].map((f, i) => (
                 <div key={i} className="table-row" style={{ justifyContent: "space-between" }}>
