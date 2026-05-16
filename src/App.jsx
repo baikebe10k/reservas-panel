@@ -67,7 +67,7 @@ export default function App() {
   function addNotification(reservation) {
     const id = Date.now();
     setNotifications(prev => [...prev, { id, reservation }]);
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
     playSound();
   }
 
@@ -226,16 +226,16 @@ export default function App() {
 
       <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, display: "flex", flexDirection: "column", gap: 10 }}>
         {notifications.map(n => (
-          <div key={n.id} className="notif" style={{ background: "#111827", color: "#fff", borderRadius: 12, padding: "14px 18px", minWidth: 280, boxShadow: "0 8px 24px #00000030", display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ width: 36, height: 36, background: "#16a34a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Bell size={16} color="#fff" />
+          <div key={n.id} className="notif" style={{ background: "#fff", color: "#111827", borderRadius: 12, padding: "14px 18px", minWidth: 300, boxShadow: "0 8px 24px #00000015", border: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ width: 36, height: 36, background: "#f0fdf4", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid #bbf7d0" }}>
+              <Bell size={16} color="#16a34a" />
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>¡Nueva reserva!</div>
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>{n.reservation.customer_name} · {n.reservation.time} · {n.reservation.guests}p</div>
-              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{n.reservation.date}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 2 }}>¡Nueva reserva!</div>
+              <div style={{ fontSize: 12, color: "#374151" }}>{n.reservation.customer_name} · {n.reservation.time} · {n.reservation.guests}p</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{n.reservation.date}</div>
             </div>
-            <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", marginLeft: "auto" }}>
+            <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", marginLeft: "auto" }}>
               <X size={14} />
             </button>
           </div>
