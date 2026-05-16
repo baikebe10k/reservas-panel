@@ -4,7 +4,7 @@ import {
   LayoutDashboard, CalendarDays, Star, MessageCircle, Settings,
   TrendingUp, Clock, Users, Zap, CheckCircle2, XCircle,
   AlertCircle, ChevronRight, Bell, ArrowUpRight,
-  Utensils, Phone, Calendar, Timer
+  Utensils, Phone, Calendar, Timer, Save, Edit2, X
 } from "lucide-react";
 
 const supabase = createClient(
@@ -35,6 +35,16 @@ export default function App() {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Settings state
+  const [restaurant, setRestaurant] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [editingRestaurant, setEditingRestaurant] = useState(false);
+  const [editingTable, setEditingTable] = useState(null);
+  const [restForm, setRestForm] = useState({});
+  const [tableForm, setTableForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+
   async function loadReservations() {
     setLoading(true);
     const { data } = await supabase
@@ -45,7 +55,35 @@ export default function App() {
     setLoading(false);
   }
 
-  useEffect(() => { if (loggedIn) loadReservations(); }, [loggedIn]);
+  async function loadSettings() {
+    const { data: rest } = await supabase
+      .from("restaurants")
+      .select("*")
+      .eq("id", "00000000-0000-0000-0000-000000000001")
+      .single();
+    setRestaurant(rest);
+    setRestForm({
+      name: rest?.name || "",
+      phone: rest?.phone || "",
+      opening_time: rest?.opening_time || "13:00",
+      closing_time: rest?.closing_time || "23:00",
+      slot_duration: rest?.slot_duration || 30,
+    });
+
+    const { data: tbls } = await supabase
+      .from("tables")
+      .select("*")
+      .eq("restaurant_id", "00000000-0000-0000-0000-000000000001")
+      .order("label");
+    setTables(tbls || []);
+  }
+
+  useEffect(() => {
+    if (loggedIn) {
+      loadReservations();
+      loadSettings();
+    }
+  }, [loggedIn]);
 
   async function confirmRes(id) {
     await supabase.from("reservations").update({ status: "confirmed" }).eq("id", id);
@@ -55,6 +93,38 @@ export default function App() {
   async function cancelRes(id) {
     await supabase.from("reservations").update({ status: "cancelled" }).eq("id", id);
     loadReservations();
+  }
+
+  async function saveRestaurant() {
+    setSaving(true);
+    await supabase.from("restaurants").update({
+      name: restForm.name,
+      phone: restForm.phone,
+      opening_time: restForm.opening_time,
+      closing_time: restForm.closing_time,
+      slot_duration: parseInt(restForm.slot_duration),
+    }).eq("id", "00000000-0000-0000-0000-000000000001");
+    await loadSettings();
+    setEditingRestaurant(false);
+    setSaving(false);
+    showSaveMsg("✓ Guardado correctamente");
+  }
+
+  async function saveTable(id) {
+    setSaving(true);
+    await supabase.from("tables").update({
+      label: tableForm.label,
+      capacity: parseInt(tableForm.capacity),
+    }).eq("id", id);
+    await loadSettings();
+    setEditingTable(null);
+    setSaving(false);
+    showSaveMsg("✓ Mesa actualizada");
+  }
+
+  function showSaveMsg(msg) {
+    setSaveMsg(msg);
+    setTimeout(() => setSaveMsg(""), 3000);
   }
 
   function handleLogin() {
@@ -118,7 +188,10 @@ export default function App() {
         .btn-green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
         .btn-red { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .btn-dark { background: #111827; color: #fff; border-color: #111827; }
+        .btn-gray { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
+        .input-field { width: 100%; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; fontSize: 13px; fontFamily: system-ui; outline: none; }
+        .input-field:focus { border-color: #111827; }
       `}</style>
 
       <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
@@ -146,7 +219,7 @@ export default function App() {
       <main style={{ flex: 1, overflowY: "auto" }}>
         <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(249,250,251,0.9)", borderBottom: "1px solid #e5e7eb", padding: "13px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Restaurante Demo</h1>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{restaurant?.name || "Restaurante Demo"}</h1>
             <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
           </div>
           <button className="btn btn-dark" onClick={loadReservations}>↻ Actualizar</button>
@@ -267,21 +340,102 @@ export default function App() {
           )}
 
           {tab === "settings" && (
-            <div className="card">
-              <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Configuración</span></div>
-              {[
-                { Icon: Utensils, label: "Restaurante",      value: "Restaurante Demo" },
-                { Icon: Phone,    label: "WhatsApp",         value: "+1 415 523 8886"  },
-                { Icon: Timer,    label: "Duración reserva", value: "90 minutos"       },
-              ].map((f, i) => (
-                <div key={i} className="table-row" style={{ justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <f.Icon size={14} color="#6b7280" />
-                    <span style={{ fontSize: 13, color: "#6b7280" }}>{f.label}</span>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{f.value}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {saveMsg && (
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 16px", color: "#15803d", fontSize: 13, fontWeight: 600 }}>
+                  {saveMsg}
                 </div>
-              ))}
+              )}
+
+              {/* Datos del restaurante */}
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Datos del restaurante</span>
+                  {!editingRestaurant
+                    ? <button className="btn btn-gray" onClick={() => setEditingRestaurant(true)}><Edit2 size={12} style={{ marginRight: 4 }} />Editar</button>
+                    : <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn btn-gray" onClick={() => setEditingRestaurant(false)}><X size={12} /></button>
+                        <button className="btn btn-dark" onClick={saveRestaurant} disabled={saving}><Save size={12} style={{ marginRight: 4 }} />{saving ? "Guardando..." : "Guardar"}</button>
+                      </div>
+                  }
+                </div>
+                {[
+                  { label: "Nombre", field: "name", icon: Utensils },
+                  { label: "Teléfono WhatsApp", field: "phone", icon: Phone },
+                  { label: "Hora apertura", field: "opening_time", icon: Clock, placeholder: "13:00" },
+                  { label: "Hora cierre", field: "closing_time", icon: Clock, placeholder: "23:00" },
+                  { label: "Duración slot (min)", field: "slot_duration", icon: Timer, placeholder: "30" },
+                ].map(({ label, field, icon: Icon, placeholder }) => (
+                  <div key={field} className="table-row" style={{ justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Icon size={14} color="#6b7280" />
+                      <span style={{ fontSize: 13, color: "#6b7280" }}>{label}</span>
+                    </div>
+                    {editingRestaurant
+                      ? <input
+                          className="input-field"
+                          style={{ width: 180, textAlign: "right" }}
+                          value={restForm[field] || ""}
+                          placeholder={placeholder}
+                          onChange={e => setRestForm(f => ({ ...f, [field]: e.target.value }))}
+                        />
+                      : <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{restForm[field] || "—"}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+
+              {/* Mesas */}
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Mesas ({tables.length})</span>
+                </div>
+                {tables.map(t => (
+                  <div key={t.id} className="table-row" style={{ justifyContent: "space-between" }}>
+                    {editingTable === t.id ? (
+                      <>
+                        <div style={{ display: "flex", gap: 8, flex: 1 }}>
+                          <input
+                            className="input-field"
+                            style={{ width: 120 }}
+                            value={tableForm.label || ""}
+                            placeholder="Nombre mesa"
+                            onChange={e => setTableForm(f => ({ ...f, label: e.target.value }))}
+                          />
+                          <input
+                            className="input-field"
+                            style={{ width: 80 }}
+                            type="number"
+                            value={tableForm.capacity || ""}
+                            placeholder="Capacidad"
+                            onChange={e => setTableForm(f => ({ ...f, capacity: e.target.value }))}
+                          />
+                          <span style={{ fontSize: 12, color: "#9ca3af", alignSelf: "center" }}>personas</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-gray" onClick={() => setEditingTable(null)}><X size={12} /></button>
+                          <button className="btn btn-dark" onClick={() => saveTable(t.id)} disabled={saving}>
+                            <Save size={12} style={{ marginRight: 4 }} />{saving ? "..." : "Guardar"}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Utensils size={14} color="#6b7280" />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{t.label}</span>
+                          <span style={{ fontSize: 12, color: "#9ca3af" }}>{t.capacity} personas</span>
+                        </div>
+                        <button className="btn btn-gray" onClick={() => { setEditingTable(t.id); setTableForm({ label: t.label, capacity: t.capacity }); }}>
+                          <Edit2 size={12} style={{ marginRight: 4 }} />Editar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
             </div>
           )}
 
