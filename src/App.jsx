@@ -5,7 +5,8 @@ import {
   LayoutDashboard, CalendarDays, MessageCircle, Settings,
   TrendingUp, Clock, Users, CheckCircle2, XCircle,
   AlertCircle, ArrowUpRight, Utensils, Phone, Calendar, Timer,
-  Save, Edit2, X, Grid, Bell, BarChart2, Search, Plus, Trash2
+  Save, Edit2, X, Grid, Bell, BarChart2, Search, Plus, Trash2,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
 
 const supabase = createClient(
@@ -22,11 +23,15 @@ const STATUS = {
 const nav = [
   { id: "overview",     Icon: LayoutDashboard, label: "Resumen" },
   { id: "reservations", Icon: CalendarDays,    label: "Reservas" },
+  { id: "calendar",     Icon: Calendar,        label: "Calendario" },
   { id: "tables",       Icon: Grid,            label: "Mesas" },
   { id: "stats",        Icon: BarChart2,       label: "Estadísticas" },
   { id: "whatsapp",     Icon: MessageCircle,   label: "WhatsApp" },
   { id: "settings",     Icon: Settings,        label: "Config" },
 ];
+
+const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -51,6 +56,9 @@ export default function App() {
   const [filterHour, setFilterHour] = useState("");
   const [newTable, setNewTable] = useState({ label: "", capacity: "" });
   const [addingTable, setAddingTable] = useState(false);
+  const [calView, setCalView] = useState("week");
+  const [calDate, setCalDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
   const audioCtx = useRef(null);
 
   function playSound() {
@@ -174,6 +182,42 @@ export default function App() {
     return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRate, totalConfirmed: confirmed.length };
   }
 
+  function getWeekDays(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    return Array.from({ length: 7 }, (_, i) => {
+      const dd = new Date(monday);
+      dd.setDate(monday.getDate() + i);
+      return dd;
+    });
+  }
+
+  function getMonthDays(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    const days = [];
+    for (let i = 0; i < startDay; i++) {
+      const d = new Date(firstDay); d.setDate(d.getDate() - (startDay - i));
+      days.push({ date: d, currentMonth: false });
+    }
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      days.push({ date: new Date(year, month, i), currentMonth: true });
+    }
+    while (days.length % 7 !== 0) {
+      const last = days[days.length - 1].date;
+      const d = new Date(last); d.setDate(last.getDate() + 1);
+      days.push({ date: d, currentMonth: false });
+    }
+    return days;
+  }
+
+  function dateStr(d) { return d.toISOString().split("T")[0]; }
+
   const filteredReservations = reservations.filter(r => {
     const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
     const matchDate = !filterDate || r.date === filterDate;
@@ -209,6 +253,8 @@ export default function App() {
   const confirmedCount = reservations.filter(r => r.status === "confirmed").length;
   const freeTables = tables.filter(t => getTableStatus(t).label === "Libre").length;
   const stats = getStats();
+  const weekDays = getWeekDays(calDate);
+  const monthDays = getMonthDays(calDate);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
@@ -230,6 +276,10 @@ export default function App() {
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
         .mesa-card { border-radius: 10px; padding: 14px 16px; border: 1.5px solid; transition: box-shadow 0.15s; display: flex; flex-direction: column; gap: 8px; }
         .mesa-card:hover { box-shadow: 0 4px 12px #00000010; }
+        .cal-day { border: 1px solid #f3f4f6; border-radius: 8px; padding: 8px; min-height: 80px; cursor: pointer; transition: background 0.1s; }
+        .cal-day:hover { background: #f9fafb; }
+        .cal-day.today { border-color: #111827; }
+        .cal-day.other-month { opacity: 0.4; }
         @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .notif { animation: slideIn 0.3s ease; }
       `}</style>
@@ -371,6 +421,140 @@ export default function App() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {tab === "calendar" && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button className="btn btn-gray" onClick={() => {
+                    const d = new Date(calDate);
+                    if (calView === "week") d.setDate(d.getDate() - 7);
+                    else d.setMonth(d.getMonth() - 1);
+                    setCalDate(d);
+                  }}><ChevronLeft size={14} /></button>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "#111827", minWidth: 180, textAlign: "center" }}>
+                    {calView === "week"
+                      ? weekDays[0].toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) + ' – ' + weekDays[6].toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : MONTHS_ES[calDate.getMonth()] + ' ' + calDate.getFullYear()
+                    }
+                  </span>
+                  <button className="btn btn-gray" onClick={() => {
+                    const d = new Date(calDate);
+                    if (calView === "week") d.setDate(d.getDate() + 7);
+                    else d.setMonth(d.getMonth() + 1);
+                    setCalDate(d);
+                  }}><ChevronRight size={14} /></button>
+                  <button className="btn btn-gray" onClick={() => setCalDate(new Date())} style={{ fontSize: 11 }}>Hoy</button>
+                </div>
+                <div style={{ display: "flex", gap: 4, background: "#f3f4f6", borderRadius: 8, padding: 4 }}>
+                  <button onClick={() => setCalView("week")} style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "system-ui", background: calView === "week" ? "#fff" : "transparent", color: calView === "week" ? "#111827" : "#6b7280", boxShadow: calView === "week" ? "0 1px 3px #0000000d" : "none" }}>Semana</button>
+                  <button onClick={() => setCalView("month")} style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "system-ui", background: calView === "month" ? "#fff" : "transparent", color: calView === "month" ? "#111827" : "#6b7280", boxShadow: calView === "month" ? "0 1px 3px #0000000d" : "none" }}>Mes</button>
+                </div>
+              </div>
+
+              {calView === "week" && (
+                <div className="card">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #f3f4f6" }}>
+                    {weekDays.map((d, i) => {
+                      const isToday = dateStr(d) === today;
+                      const dayRes = reservations.filter(r => r.date === dateStr(d) && r.status === "confirmed");
+                      return (
+                        <div key={i} style={{ padding: "12px 8px", borderRight: i < 6 ? "1px solid #f3f4f6" : "none", cursor: "pointer" }} onClick={() => setSelectedDate(selectedDate === dateStr(d) ? null : dateStr(d))}>
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>{DAYS_ES[d.getDay()]}</div>
+                          <div style={{ width: 28, height: 28, borderRadius: "50%", background: isToday ? "#111827" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#fff" : "#111827" }}>{d.getDate()}</span>
+                          </div>
+                          {dayRes.length > 0 && (
+                            <div style={{ background: "#eff6ff", borderRadius: 6, padding: "3px 6px", fontSize: 11, fontWeight: 600, color: "#3b82f6", textAlign: "center" }}>
+                              {dayRes.length} reserva{dayRes.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {selectedDate && (
+                    <div style={{ padding: 16 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>
+                        {new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      </div>
+                      {reservations.filter(r => r.date === selectedDate).length === 0 && (
+                        <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>
+                      )}
+                      {reservations.filter(r => r.date === selectedDate).sort((a, b) => a.time?.localeCompare(b.time)).map(r => {
+                        const S = STATUS[r.status] || STATUS.confirmed;
+                        return (
+                          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f9fafb" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 45 }}>{r.time}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                              <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</div>
+                            <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {calView === "month" && (
+                <div className="card">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #f3f4f6" }}>
+                    {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => (
+                      <div key={d} style={{ padding: "10px 8px", fontSize: 11, fontWeight: 600, color: "#9ca3af", textAlign: "center" }}>{d}</div>
+                    ))}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, padding: 8 }}>
+                    {monthDays.map(({ date: d, currentMonth }, i) => {
+                      const ds = dateStr(d);
+                      const isToday = ds === today;
+                      const dayRes = reservations.filter(r => r.date === ds && r.status !== "cancelled");
+                      const isSelected = selectedDate === ds;
+                      return (
+                        <div key={i} className={"cal-day" + (isToday ? " today" : "") + (!currentMonth ? " other-month" : "")}
+                          style={{ background: isSelected ? "#f0fdf4" : "white", borderColor: isToday ? "#111827" : isSelected ? "#bbf7d0" : "#f3f4f6" }}
+                          onClick={() => setSelectedDate(isSelected ? null : ds)}>
+                          <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? "#111827" : "#374151", marginBottom: 4 }}>{d.getDate()}</div>
+                          {dayRes.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <div style={{ background: "#111827", borderRadius: 4, padding: "2px 5px", fontSize: 10, fontWeight: 600, color: "#fff" }}>{dayRes.length} res.</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {selectedDate && (
+                    <div style={{ padding: 16, borderTop: "1px solid #f3f4f6" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>
+                        {new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      </div>
+                      {reservations.filter(r => r.date === selectedDate).length === 0 && (
+                        <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>
+                      )}
+                      {reservations.filter(r => r.date === selectedDate).sort((a, b) => a.time?.localeCompare(b.time)).map(r => {
+                        const S = STATUS[r.status] || STATUS.confirmed;
+                        return (
+                          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f9fafb" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 45 }}>{r.time}</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                              <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</div>
+                            <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
