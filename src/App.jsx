@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
   LayoutDashboard, CalendarDays, MessageCircle, Settings,
   TrendingUp, Clock, Users, CheckCircle2, XCircle,
   AlertCircle, ArrowUpRight, Utensils, Phone, Calendar, Timer,
-  Save, Edit2, X, Grid, Bell, BarChart2
+  Save, Edit2, X, Grid, Bell, BarChart2, Search, Plus, Trash2
 } from "lucide-react";
 
 const supabase = createClient(
@@ -44,14 +44,19 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [notifications, setNotifications] = useState([]);
+  const [search, setSearch] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterHour, setFilterHour] = useState("");
+  const [newTable, setNewTable] = useState({ label: "", capacity: "" });
+  const [addingTable, setAddingTable] = useState(false);
   const audioCtx = useRef(null);
 
   function playSound() {
     try {
       if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioCtx.current;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
       o.connect(g); g.connect(ctx.destination);
       o.type = "sine";
       o.frequency.setValueAtTime(880, ctx.currentTime);
@@ -71,7 +76,7 @@ export default function App() {
 
   async function loadReservations() {
     setLoading(true);
-    const { data } = await supabase.from("reservations").select("*").order("date", { ascending: true });
+    const { data } = await supabase.from("reservations").select("*").order("date", { ascending: false });
     setReservations(data || []);
     setLoading(false);
   }
@@ -86,12 +91,10 @@ export default function App() {
 
   useEffect(() => {
     if (!loggedIn) return;
-    loadReservations();
-    loadSettings();
+    loadReservations(); loadSettings();
     const channel = supabase.channel('reservations-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reservations' }, payload => {
-        loadReservations();
-        addNotification(payload.new);
+        loadReservations(); addNotification(payload.new);
       }).subscribe();
     return () => supabase.removeChannel(channel);
   }, [loggedIn]);
@@ -109,6 +112,20 @@ export default function App() {
     setSaving(true);
     await supabase.from("tables").update({ label: tableForm.label, capacity: parseInt(tableForm.capacity) }).eq("id", id);
     await loadSettings(); setEditingTable(null); setSaving(false); showSaveMsg("✓ Mesa actualizada");
+  }
+
+  async function addTable() {
+    if (!newTable.label || !newTable.capacity) return;
+    setSaving(true);
+    await supabase.from("tables").insert([{ restaurant_id: "00000000-0000-0000-0000-000000000001", label: newTable.label, capacity: parseInt(newTable.capacity), active: true, manual_status: "available" }]);
+    setNewTable({ label: "", capacity: "" }); setAddingTable(false);
+    await loadSettings(); setSaving(false); showSaveMsg("✓ Mesa añadida");
+  }
+
+  async function deleteTable(id) {
+    if (!confirm("¿Eliminar esta mesa?")) return;
+    await supabase.from("tables").delete().eq("id", id);
+    await loadSettings(); showSaveMsg("✓ Mesa eliminada");
   }
 
   async function setTableManualStatus(id, status) {
@@ -134,48 +151,35 @@ export default function App() {
     else setLoginError("Contraseña incorrecta");
   }
 
-  // Stats calculations
   function getStats() {
     const confirmed = reservations.filter(r => r.status === "confirmed");
     const cancelled = reservations.filter(r => r.status === "cancelled");
     const totalGuests = confirmed.reduce((sum, r) => sum + (r.guests || 0), 0);
     const cancellationRate = reservations.length > 0 ? Math.round((cancelled.length / reservations.length) * 100) : 0;
-
-    // Reservas por día (últimos 7 días)
     const last7 = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+      const d = new Date(); d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
       const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' });
       last7.push({ day: dayName, reservas: confirmed.filter(r => r.date === dateStr).length });
     }
-
-    // Hora pico
     const hourCount = {};
-    confirmed.forEach(r => {
-      const h = r.time?.split(':')[0] + ':00';
-      hourCount[h] = (hourCount[h] || 0) + 1;
-    });
+    confirmed.forEach(r => { const h = r.time?.split(':')[0] + ':00'; hourCount[h] = (hourCount[h] || 0) + 1; });
     const horasPico = Object.entries(hourCount).map(([hora, reservas]) => ({ hora, reservas })).sort((a, b) => a.hora.localeCompare(b.hora));
-
-    // Ocupación por mesa
     const mesaCount = {};
-    confirmed.forEach(r => {
-      const mesa = tables.find(t => t.id === r.table_id);
-      const label = mesa?.label || 'Desconocida';
-      mesaCount[label] = (mesaCount[label] || 0) + 1;
-    });
+    confirmed.forEach(r => { const mesa = tables.find(t => t.id === r.table_id); const label = mesa?.label || 'Desconocida'; mesaCount[label] = (mesaCount[label] || 0) + 1; });
     const ocupacionMesas = Object.entries(mesaCount).map(([mesa, reservas]) => ({ mesa, reservas })).sort((a, b) => b.reservas - a.reservas).slice(0, 8);
-
-    // Tasa cancelaciones para pie
-    const pieData = [
-      { name: 'Confirmadas', value: confirmed.length, color: '#16a34a' },
-      { name: 'Canceladas', value: cancelled.length, color: '#dc2626' },
-    ];
-
+    const pieData = [{ name: 'Confirmadas', value: confirmed.length, color: '#16a34a' }, { name: 'Canceladas', value: cancelled.length, color: '#dc2626' }];
     return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRate, totalConfirmed: confirmed.length };
   }
+
+  const filteredReservations = reservations.filter(r => {
+    const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
+    const matchDate = !filterDate || r.date === filterDate;
+    const matchStatus = !filterStatus || r.status === filterStatus;
+    const matchHour = !filterHour || r.time?.startsWith(filterHour);
+    return matchSearch && matchDate && matchStatus && matchHour;
+  });
 
   if (!loggedIn) {
     return (
@@ -197,7 +201,7 @@ export default function App() {
 
   const today = new Date().toISOString().split("T")[0];
   const todayRes = reservations.filter(r => r.date === today);
-  const confirmed = reservations.filter(r => r.status === "confirmed").length;
+  const confirmedCount = reservations.filter(r => r.status === "confirmed").length;
   const freeTables = tables.filter(t => getTableStatus(t).label === "Libre").length;
   const stats = getStats();
 
@@ -221,6 +225,8 @@ export default function App() {
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
         .mesa-card { border-radius: 10px; padding: 14px 16px; border: 1.5px solid; transition: box-shadow 0.15s; display: flex; flex-direction: column; gap: 8px; }
         .mesa-card:hover { box-shadow: 0 4px 12px #00000010; }
+        .input { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; fontSize: 13px; fontFamily: system-ui; outline: none; }
+        .input:focus { border-color: #111827; }
         @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .notif { animation: slideIn 0.3s ease; }
       `}</style>
@@ -268,7 +274,7 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
                 {[
                   { label: "Reservas hoy",   value: todayRes.length,    Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
-                  { label: "Confirmadas",    value: confirmed,           Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
+                  { label: "Confirmadas",    value: confirmedCount,      Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
                   { label: "Mesas libres",   value: freeTables,          Icon: Grid,         color: "#16a34a", bg: "#f0fdf4" },
                   { label: "Total reservas", value: reservations.length, Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
                 ].map((s, i) => (
@@ -309,25 +315,54 @@ export default function App() {
           )}
 
           {tab === "reservations" && (
-            <div className="card">
-              <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{reservations.length} reservas totales</span></div>
-              {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
-              {reservations.map(r => {
-                const S = STATUS[r.status] || STATUS.confirmed;
-                return (
-                  <div key={r.id} className="table-row" style={{ opacity: r.status === "cancelled" ? 0.5 : 1 }}>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div><div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Calendar size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.date}</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Clock size={11} color="#9ca3af" /><span style={{ fontSize: 13, fontWeight: 600 }}>{r.time}</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Users size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</span></div>
-                    <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
-                    <div style={{ display: "flex", gap: 5 }}>
-                      {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>✓</button>}
-                      {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>✕</button>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+                  <Search size={14} color="#9ca3af" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
+                  <input placeholder="Buscar nombre o teléfono..." value={search} onChange={e => setSearch(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px 8px 32px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                </div>
+                <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+                  style={{ padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontFamily: "system-ui", outline: "none" }} />
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                  style={{ padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontFamily: "system-ui", outline: "none", background: "#fff" }}>
+                  <option value="">Todos los estados</option>
+                  <option value="confirmed">Confirmadas</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="cancelled">Canceladas</option>
+                </select>
+                <select value={filterHour} onChange={e => setFilterHour(e.target.value)}
+                  style={{ padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontFamily: "system-ui", outline: "none", background: "#fff" }}>
+                  <option value="">Todas las horas</option>
+                  {["13","14","15","16","17","18","19","20","21","22","23"].map(h => <option key={h} value={h}>{h}:00</option>)}
+                </select>
+                {(search || filterDate || filterStatus || filterHour) && (
+                  <button className="btn btn-gray" onClick={() => { setSearch(""); setFilterDate(""); setFilterStatus(""); setFilterHour(""); }}>✕ Limpiar</button>
+                )}
+              </div>
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span>
+                </div>
+                {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
+                {!loading && filteredReservations.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas con estos filtros</div>}
+                {filteredReservations.map(r => {
+                  const S = STATUS[r.status] || STATUS.confirmed;
+                  return (
+                    <div key={r.id} className="table-row" style={{ opacity: r.status === "cancelled" ? 0.5 : 1 }}>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div><div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Calendar size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.date}</span></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Clock size={11} color="#9ca3af" /><span style={{ fontSize: 13, fontWeight: 600 }}>{r.time}</span></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Users size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</span></div>
+                      <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>✓</button>}
+                        {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>✕</button>}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -346,7 +381,7 @@ export default function App() {
                   </div>
                 ))}
                 <div style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af", alignSelf: "center" }}>
-                  {tables.filter(t => getTableStatus(t).label === "Libre").length} libres · {tables.filter(t => getTableStatus(t).label === "Ocupada").length} ocupadas · {tables.length} total
+                  {tables.filter(t => getTableStatus(t).label === "Libre").length} libres · {tables.length} total
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
@@ -384,9 +419,9 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
                 {[
-                  { label: "Total confirmadas", value: stats.totalConfirmed, color: "#16a34a", bg: "#f0fdf4" },
-                  { label: "Total comensales", value: stats.totalGuests, color: "#3b82f6", bg: "#eff6ff" },
-                  { label: "Tasa cancelación", value: stats.cancellationRate + "%", color: "#dc2626", bg: "#fef2f2" },
+                  { label: "Total confirmadas", value: stats.totalConfirmed, color: "#16a34a" },
+                  { label: "Total comensales", value: stats.totalGuests, color: "#3b82f6" },
+                  { label: "Tasa cancelación", value: stats.cancellationRate + "%", color: "#dc2626" },
                 ].map((s, i) => (
                   <div key={i} className="stat-card" style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 36, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -394,7 +429,6 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
               <div className="card">
                 <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Reservas últimos 7 días</span></div>
                 <div style={{ padding: 20 }}>
@@ -408,7 +442,6 @@ export default function App() {
                   </ResponsiveContainer>
                 </div>
               </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div className="card">
                   <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Horas pico</span></div>
@@ -423,7 +456,6 @@ export default function App() {
                     </ResponsiveContainer>
                   </div>
                 </div>
-
                 <div className="card">
                   <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Estado reservas</span></div>
                   <div style={{ padding: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -444,7 +476,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
               <div className="card">
                 <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Mesas más reservadas</span></div>
                 <div style={{ padding: 20 }}>
@@ -510,8 +541,25 @@ export default function App() {
                   </div>
                 ))}
               </div>
+
               <div className="card">
-                <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Mesas ({tables.length})</span></div>
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Mesas ({tables.length})</span>
+                  <button className="btn btn-dark" style={{ fontSize: 11 }} onClick={() => setAddingTable(!addingTable)}>
+                    <Plus size={12} style={{ marginRight: 4 }} />Añadir mesa
+                  </button>
+                </div>
+                {addingTable && (
+                  <div className="table-row" style={{ background: "#f9fafb", gap: 8 }}>
+                    <input placeholder="Nombre (ej: Mesa 30)" value={newTable.label} onChange={e => setNewTable(t => ({ ...t, label: e.target.value }))}
+                      style={{ flex: 1, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontFamily: "system-ui" }} />
+                    <input placeholder="Capacidad" type="number" value={newTable.capacity} onChange={e => setNewTable(t => ({ ...t, capacity: e.target.value }))}
+                      style={{ width: 90, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontFamily: "system-ui" }} />
+                    <span style={{ fontSize: 12, color: "#6b7280" }}>personas</span>
+                    <button className="btn btn-gray" onClick={() => setAddingTable(false)}><X size={12} /></button>
+                    <button className="btn btn-dark" onClick={addTable} disabled={saving}><Save size={12} style={{ marginRight: 4 }} />{saving ? "..." : "Guardar"}</button>
+                  </div>
+                )}
                 {tables.map(t => (
                   <div key={t.id} className="table-row" style={{ justifyContent: "space-between" }}>
                     {editingTable === t.id ? (
@@ -528,7 +576,10 @@ export default function App() {
                     ) : (
                       <>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Utensils size={14} color="#6b7280" /><span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{t.label}</span><span style={{ fontSize: 12, color: "#9ca3af" }}>{t.capacity} personas</span></div>
-                        <button className="btn btn-gray" onClick={() => { setEditingTable(t.id); setTableForm({ label: t.label, capacity: t.capacity }); }}><Edit2 size={12} style={{ marginRight: 4 }} />Editar</button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-gray" onClick={() => { setEditingTable(t.id); setTableForm({ label: t.label, capacity: t.capacity }); }}><Edit2 size={12} style={{ marginRight: 4 }} />Editar</button>
+                          <button className="btn btn-red" onClick={() => deleteTable(t.id)}><Trash2 size={12} /></button>
+                        </div>
                       </>
                     )}
                   </div>
