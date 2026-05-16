@@ -45,6 +45,7 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [search, setSearch] = useState("");
+  const [searchOverview, setSearchOverview] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterHour, setFilterHour] = useState("");
@@ -181,6 +182,12 @@ export default function App() {
     return matchSearch && matchDate && matchStatus && matchHour;
   });
 
+  const today = new Date().toISOString().split("T")[0];
+  const todayRes = reservations.filter(r => r.date === today).filter(r => {
+    if (!searchOverview) return true;
+    return r.customer_name?.toLowerCase().includes(searchOverview.toLowerCase()) || r.customer_phone?.includes(searchOverview);
+  });
+
   if (!loggedIn) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
@@ -199,8 +206,6 @@ export default function App() {
     );
   }
 
-  const today = new Date().toISOString().split("T")[0];
-  const todayRes = reservations.filter(r => r.date === today);
   const confirmedCount = reservations.filter(r => r.status === "confirmed").length;
   const freeTables = tables.filter(t => getTableStatus(t).label === "Libre").length;
   const stats = getStats();
@@ -225,8 +230,6 @@ export default function App() {
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
         .mesa-card { border-radius: 10px; padding: 14px 16px; border: 1.5px solid; transition: box-shadow 0.15s; display: flex; flex-direction: column; gap: 8px; }
         .mesa-card:hover { box-shadow: 0 4px 12px #00000010; }
-        .input { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; fontSize: 13px; fontFamily: system-ui; outline: none; }
-        .input:focus { border-color: #111827; }
         @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .notif { animation: slideIn 0.3s ease; }
       `}</style>
@@ -273,7 +276,7 @@ export default function App() {
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
                 {[
-                  { label: "Reservas hoy",   value: todayRes.length,    Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
+                  { label: "Reservas hoy",   value: reservations.filter(r => r.date === today).length, Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
                   { label: "Confirmadas",    value: confirmedCount,      Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
                   { label: "Mesas libres",   value: freeTables,          Icon: Grid,         color: "#16a34a", bg: "#f0fdf4" },
                   { label: "Total reservas", value: reservations.length, Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
@@ -291,7 +294,14 @@ export default function App() {
               <div className="card">
                 <div className="card-header">
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Reservas de hoy</span>
-                  <button className="btn btn-dark" style={{ fontSize: 11 }} onClick={() => setTab("reservations")}>Ver todas →</button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ position: "relative" }}>
+                      <Search size={12} color="#9ca3af" style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }} />
+                      <input placeholder="Buscar..." value={searchOverview} onChange={e => setSearchOverview(e.target.value)}
+                        style={{ padding: "5px 10px 5px 26px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontFamily: "system-ui", width: 150, outline: "none" }} />
+                    </div>
+                    <button className="btn btn-dark" style={{ fontSize: 11 }} onClick={() => setTab("reservations")}>Ver todas →</button>
+                  </div>
                 </div>
                 {loading && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>Cargando...</div>}
                 {!loading && todayRes.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas para hoy</div>}
@@ -341,9 +351,7 @@ export default function App() {
                 )}
               </div>
               <div className="card">
-                <div className="card-header">
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span>
-                </div>
+                <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span></div>
                 {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
                 {!loading && filteredReservations.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas con estos filtros</div>}
                 {filteredReservations.map(r => {
@@ -433,12 +441,7 @@ export default function App() {
                 <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Reservas últimos 7 días</span></div>
                 <div style={{ padding: 20 }}>
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={stats.last7}>
-                      <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Bar dataKey="reservas" fill="#111827" radius={[4,4,0,0]} />
-                    </BarChart>
+                    <BarChart data={stats.last7}><XAxis dataKey="day" tick={{ fontSize: 12 }} /><YAxis tick={{ fontSize: 12 }} /><Tooltip /><Bar dataKey="reservas" fill="#111827" radius={[4,4,0,0]} /></BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -447,12 +450,7 @@ export default function App() {
                   <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600 }}>Horas pico</span></div>
                   <div style={{ padding: 20 }}>
                     <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={stats.horasPico}>
-                        <XAxis dataKey="hora" tick={{ fontSize: 11 }} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="reservas" fill="#3b82f6" radius={[4,4,0,0]} />
-                      </BarChart>
+                      <BarChart data={stats.horasPico}><XAxis dataKey="hora" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="reservas" fill="#3b82f6" radius={[4,4,0,0]} /></BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
@@ -462,8 +460,7 @@ export default function App() {
                     <PieChart width={200} height={200}>
                       <Pie data={stats.pieData} cx={100} cy={100} innerRadius={60} outerRadius={90} dataKey="value">
                         {stats.pieData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
-                      </Pie>
-                      <Tooltip />
+                      </Pie><Tooltip />
                     </PieChart>
                   </div>
                   <div style={{ padding: "0 20px 16px", display: "flex", gap: 16, justifyContent: "center" }}>
@@ -481,10 +478,7 @@ export default function App() {
                 <div style={{ padding: 20 }}>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={stats.ocupacionMesas} layout="vertical">
-                      <XAxis type="number" tick={{ fontSize: 11 }} />
-                      <YAxis dataKey="mesa" type="category" tick={{ fontSize: 11 }} width={70} />
-                      <Tooltip />
-                      <Bar dataKey="reservas" fill="#8b5cf6" radius={[0,4,4,0]} />
+                      <XAxis type="number" tick={{ fontSize: 11 }} /><YAxis dataKey="mesa" type="category" tick={{ fontSize: 11 }} width={70} /><Tooltip /><Bar dataKey="reservas" fill="#8b5cf6" radius={[0,4,4,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -541,7 +535,6 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
               <div className="card">
                 <div className="card-header">
                   <span style={{ fontSize: 13, fontWeight: 600 }}>Mesas ({tables.length})</span>
