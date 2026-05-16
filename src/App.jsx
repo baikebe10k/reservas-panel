@@ -60,7 +60,7 @@ export default function App() {
       .from("restaurants")
       .select("*")
       .eq("id", "00000000-0000-0000-0000-000000000001")
-      .single();
+      .maybeSingle();
     setRestaurant(rest);
     setRestForm({
       name: rest?.name || "",
