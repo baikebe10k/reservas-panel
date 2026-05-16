@@ -9,7 +9,7 @@ import {
 
 const supabase = createClient(
   "https://xfhgkdequpejbinewfmf.supabase.co",
-  "sb_publishable_7kantdqRUpAtsZ2R9Iq3zA_fGrg-6Za"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmaGdrZGVxdXBlamJpbmV3Zm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjEyNDksImV4cCI6MjA5Mzk5NzI0OX0._wjZHBkkpx5F-1uYStWCx79a9wJhoVs-UPEY5fjjCdE"
 );
 
 const LOGIN_PASSWORD = "reservia2024";
