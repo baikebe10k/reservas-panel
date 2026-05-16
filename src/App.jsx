@@ -15,9 +15,9 @@ const supabase = createClient(
 const LOGIN_PASSWORD = "reservia2024";
 
 const STATUS = {
-  confirmed: { label: "Confirmada", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", icon: CheckCircle2 },
-  pending:   { label: "Pendiente",  color: "#d97706", bg: "#fffbeb", border: "#fde68a", icon: AlertCircle  },
-  cancelled: { label: "Cancelada",  color: "#dc2626", bg: "#fef2f2", border: "#fecaca", icon: XCircle      },
+  confirmed: { label: "Confirmada", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+  pending:   { label: "Pendiente",  color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+  cancelled: { label: "Cancelada",  color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
 };
 
 const nav = [
@@ -107,25 +107,21 @@ export default function App() {
   }
 
   function getTableStatus(table) {
-    if (table.manual_status === 'blocked') return { label: "Bloqueada", color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" };
+    if (table.manual_status === 'occupied') return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626" };
+    if (table.manual_status === 'blocked') return { label: "Bloqueada", color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", dot: "#9ca3af" };
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
     const activeRes = reservations.find(r =>
-      r.table_id === table.id &&
-      r.date === todayStr &&
-      r.status === "confirmed" &&
-      new Date(r.end_time) > now &&
-      new Date(r.date + "T" + r.time) <= now
+      r.table_id === table.id && r.date === todayStr && r.status === "confirmed" &&
+      new Date(r.end_time) > now && new Date(r.date + "T" + r.time) <= now
     );
-    if (activeRes) return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", reservation: activeRes };
+    if (activeRes) return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626", reservation: activeRes };
     const upcomingRes = reservations.find(r =>
-      r.table_id === table.id &&
-      r.date === todayStr &&
-      r.status === "confirmed" &&
+      r.table_id === table.id && r.date === todayStr && r.status === "confirmed" &&
       new Date(r.date + "T" + r.time) > now
     );
-    if (upcomingRes) return { label: "Reservada", color: "#d97706", bg: "#fffbeb", border: "#fde68a", reservation: upcomingRes };
-    return { label: "Libre", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" };
+    if (upcomingRes) return { label: "Reservada", color: "#d97706", bg: "#fffbeb", border: "#fde68a", dot: "#d97706", reservation: upcomingRes };
+    return { label: "Libre", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", dot: "#16a34a" };
   }
 
   function showSaveMsg(msg) {
@@ -165,12 +161,13 @@ export default function App() {
   const todayRes = reservations.filter(r => r.date === today);
   const confirmed = reservations.filter(r => r.status === "confirmed").length;
   const pending = reservations.filter(r => r.status === "pending").length;
+  const freeTables = tables.filter(t => getTableStatus(t).label === "Libre").length;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13.5px; font-weight: 500; color: #6b7280; border: none; background: none; width: 100%; text-align: left; }
+        .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13.5px; font-weight: 500; color: #6b7280; border: none; background: none; width: 100%; text-align: left; transition: all 0.15s; }
         .nav-link:hover { color: #111827; background: #f3f4f6; }
         .nav-link.active { color: #111827; background: #fff; box-shadow: 0 1px 3px #0000000d; font-weight: 600; }
         .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
@@ -178,14 +175,15 @@ export default function App() {
         .table-row { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid #f9fafb; }
         .table-row:last-child { border-bottom: none; }
         .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid; }
-        .btn { border: 1px solid; cursor: pointer; padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; font-family: inherit; }
+        .btn { border: 1px solid; cursor: pointer; padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; font-family: inherit; transition: all 0.15s; }
         .btn-green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
         .btn-red { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .btn-dark { background: #111827; color: #fff; border-color: #111827; }
         .btn-gray { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+        .btn-yellow { background: #fffbeb; color: #92400e; border-color: #fde68a; }
         .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
-        .mesa-card { border-radius: 12px; padding: 20px; border: 2px solid; cursor: pointer; transition: transform 0.1s; text-align: center; }
-        .mesa-card:hover { transform: scale(1.02); }
+        .mesa-card { border-radius: 10px; padding: 14px 16px; border: 1.5px solid; transition: box-shadow 0.15s; display: flex; flex-direction: column; gap: 8px; }
+        .mesa-card:hover { box-shadow: 0 4px 12px #00000010; }
       `}</style>
 
       <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
@@ -211,9 +209,9 @@ export default function App() {
       </aside>
 
       <main style={{ flex: 1, overflowY: "auto" }}>
-        <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(249,250,251,0.9)", borderBottom: "1px solid #e5e7eb", padding: "13px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(249,250,251,0.95)", borderBottom: "1px solid #e5e7eb", padding: "13px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{restaurant?.name || "Restaurante Demo"}</h1>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{restaurant?.name || "Restaurante"}</h1>
             <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
           </div>
           <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); }}>↻ Actualizar</button>
@@ -227,8 +225,8 @@ export default function App() {
                 {[
                   { label: "Reservas hoy",  value: todayRes.length,    Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
                   { label: "Confirmadas",   value: confirmed,           Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
-                  { label: "Pendientes",    value: pending,             Icon: AlertCircle,  color: "#f59e0b", bg: "#fffbeb" },
-                  { label: "Total",         value: reservations.length, Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
+                  { label: "Mesas libres",  value: freeTables,          Icon: Grid,         color: "#16a34a", bg: "#f0fdf4" },
+                  { label: "Total reservas",value: reservations.length, Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
                 ].map((s, i) => (
                   <div key={i} className="stat-card">
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
@@ -311,41 +309,59 @@ export default function App() {
 
           {tab === "tables" && (
             <div>
-              <div style={{ marginBottom: 16, display: "flex", gap: 16, alignItems: "center" }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  {[
-                    { color: "#16a34a", bg: "#f0fdf4", label: "Libre" },
-                    { color: "#d97706", bg: "#fffbeb", label: "Reservada hoy" },
-                    { color: "#dc2626", bg: "#fef2f2", label: "Ocupada ahora" },
-                    { color: "#6b7280", bg: "#f3f4f6", label: "Bloqueada" },
-                  ].map((s, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: s.bg, padding: "4px 10px", borderRadius: 6, border: `1px solid ${s.color}20` }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color }} />
-                      <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.label}</span>
-                    </div>
-                  ))}
+              <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                {[
+                  { color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", label: "Libre" },
+                  { color: "#d97706", bg: "#fffbeb", border: "#fde68a", label: "Reservada hoy" },
+                  { color: "#dc2626", bg: "#fef2f2", border: "#fecaca", label: "Ocupada" },
+                  { color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", label: "Bloqueada" },
+                ].map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: s.bg, padding: "5px 12px", borderRadius: 20, border: `1px solid ${s.border}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color }} />
+                    <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.label}</span>
+                  </div>
+                ))}
+                <div style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af", alignSelf: "center" }}>
+                  {tables.filter(t => getTableStatus(t).label === "Libre").length} libres · {tables.filter(t => getTableStatus(t).label === "Ocupada").length} ocupadas · {tables.length} total
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
                 {tables.map(table => {
                   const status = getTableStatus(table);
+                  const isOccupied = table.manual_status === 'occupied';
+                  const isBlocked = table.manual_status === 'blocked';
                   return (
                     <div key={table.id} className="mesa-card" style={{ background: status.bg, borderColor: status.border }}>
-                      <div style={{ fontSize: 28, marginBottom: 4 }}>🪑</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 2 }}>{table.label}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>{table.capacity} personas</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: status.color, marginBottom: 12 }}>● {status.label}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{table.label}</div>
+                          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>{table.capacity} personas</div>
+                        </div>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: status.dot, marginTop: 4, flexShrink: 0 }} />
+                      </div>
+
+                      <div style={{ fontSize: 11, fontWeight: 600, color: status.color }}>{status.label}</div>
+
                       {status.reservation && (
-                        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 10, background: "#fff", padding: "6px 8px", borderRadius: 6 }}>
-                          {status.reservation.customer_name}<br />
-                          {status.reservation.time} · {status.reservation.guests}p
+                        <div style={{ fontSize: 11, color: "#374151", background: "#fff", padding: "5px 8px", borderRadius: 6, border: "1px solid #f3f4f6" }}>
+                          <div style={{ fontWeight: 600 }}>{status.reservation.customer_name}</div>
+                          <div style={{ color: "#9ca3af" }}>{status.reservation.time} · {status.reservation.guests}p</div>
                         </div>
                       )}
-                      <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-                        {table.manual_status !== 'blocked' ? (
-                          <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={() => setTableManualStatus(table.id, 'blocked')}>🔒 Bloquear</button>
-                        ) : (
-                          <button className="btn btn-green" style={{ fontSize: 11 }} onClick={() => setTableManualStatus(table.id, 'available')}>🔓 Liberar</button>
+
+                      <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
+                        {!isBlocked && !isOccupied && (
+                          <button className="btn btn-red" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'occupied')}>Ocupar</button>
+                        )}
+                        {isOccupied && (
+                          <button className="btn btn-green" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'available')}>Liberar</button>
+                        )}
+                        {!isBlocked && !isOccupied && (
+                          <button className="btn btn-gray" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'blocked')}>Bloquear</button>
+                        )}
+                        {isBlocked && (
+                          <button className="btn btn-green" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'available')}>Liberar</button>
                         )}
                       </div>
                     </div>
