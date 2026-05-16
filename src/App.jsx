@@ -1,4 +1,3 @@
-cat > /Users/nerea/Desktop/reservas-panel/src/App.jsx << 'EOF'
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -97,7 +96,6 @@ export default function App() {
     if (!loggedIn) return;
     loadReservations();
     loadSettings();
-
     const channel = supabase
       .channel('reservations-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reservations' }, payload => {
@@ -105,7 +103,6 @@ export default function App() {
         addNotification(payload.new);
       })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [loggedIn]);
 
@@ -219,4 +216,299 @@ export default function App() {
         .btn-green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
         .btn-red { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
         .btn-dark { background: #111827; color: #fff; border-color: #111827; }
-        .btn-
+        .btn-gray { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+        .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
+        .mesa-card { border-radius: 10px; padding: 14px 16px; border: 1.5px solid; transition: box-shadow 0.15s; display: flex; flex-direction: column; gap: 8px; }
+        .mesa-card:hover { box-shadow: 0 4px 12px #00000010; }
+        @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .notif { animation: slideIn 0.3s ease; }
+      `}</style>
+
+      <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, display: "flex", flexDirection: "column", gap: 10 }}>
+        {notifications.map(n => (
+          <div key={n.id} className="notif" style={{ background: "#111827", color: "#fff", borderRadius: 12, padding: "14px 18px", minWidth: 280, boxShadow: "0 8px 24px #00000030", display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ width: 36, height: 36, background: "#16a34a", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Bell size={16} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>¡Nueva reserva!</div>
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>{n.reservation.customer_name} · {n.reservation.time} · {n.reservation.guests}p</div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{n.reservation.date}</div>
+            </div>
+            <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", marginLeft: "auto" }}>
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 6px", marginBottom: 28 }}>
+          <div style={{ width: 32, height: 32, background: "#111827", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Utensils size={16} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>ReservIA</div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>Panel Pro</div>
+          </div>
+        </div>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+          {nav.map(({ id, Icon, label }) => (
+            <button key={id} className={`nav-link ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>
+              <Icon size={16} />{label}
+            </button>
+          ))}
+        </nav>
+        <button onClick={() => setLoggedIn(false)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>
+          Cerrar sesión
+        </button>
+      </aside>
+
+      <main style={{ flex: 1, overflowY: "auto" }}>
+        <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(249,250,251,0.95)", borderBottom: "1px solid #e5e7eb", padding: "13px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{restaurant?.name || "Restaurante"}</h1>
+            <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
+          </div>
+          <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); }}>↻ Actualizar</button>
+        </header>
+
+        <div style={{ padding: "24px 28px" }}>
+
+          {tab === "overview" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: "Reservas hoy",  value: todayRes.length,    Icon: CalendarDays, color: "#3b82f6", bg: "#eff6ff" },
+                  { label: "Confirmadas",   value: confirmed,           Icon: CheckCircle2, color: "#10b981", bg: "#ecfdf5" },
+                  { label: "Mesas libres",  value: freeTables,          Icon: Grid,         color: "#16a34a", bg: "#f0fdf4" },
+                  { label: "Total reservas",value: reservations.length, Icon: TrendingUp,   color: "#8b5cf6", bg: "#f5f3ff" },
+                ].map((s, i) => (
+                  <div key={i} className="stat-card">
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div style={{ width: 36, height: 36, background: s.bg, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <s.Icon size={17} color={s.color} />
+                      </div>
+                      <ArrowUpRight size={14} color="#d1d5db" />
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: "#111827" }}>{s.value}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Reservas de hoy</span>
+                  <button className="btn btn-dark" style={{ fontSize: 11 }} onClick={() => setTab("reservations")}>Ver todas →</button>
+                </div>
+                {loading && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>Cargando...</div>}
+                {!loading && todayRes.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas para hoy</div>}
+                {todayRes.map(r => {
+                  const S = STATUS[r.status] || STATUS.confirmed;
+                  return (
+                    <div key={r.id} className="table-row">
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <Clock size={12} color="#9ca3af" /><span style={{ fontSize: 13, fontWeight: 600 }}>{r.time}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <Users size={12} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</span>
+                      </div>
+                      <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>Confirmar</button>}
+                        {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>Cancelar</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {tab === "reservations" && (
+            <div className="card">
+              <div className="card-header">
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{reservations.length} reservas totales</span>
+              </div>
+              {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
+              {reservations.map(r => {
+                const S = STATUS[r.status] || STATUS.confirmed;
+                return (
+                  <div key={r.id} className="table-row" style={{ opacity: r.status === "cancelled" ? 0.5 : 1 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <Calendar size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.date}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <Clock size={11} color="#9ca3af" /><span style={{ fontSize: 13, fontWeight: 600 }}>{r.time}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <Users size={11} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</span>
+                    </div>
+                    <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
+                    <div style={{ display: "flex", gap: 5 }}>
+                      {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>✓</button>}
+                      {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>✕</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === "tables" && (
+            <div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                {[
+                  { color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", label: "Libre" },
+                  { color: "#d97706", bg: "#fffbeb", border: "#fde68a", label: "Reservada hoy" },
+                  { color: "#dc2626", bg: "#fef2f2", border: "#fecaca", label: "Ocupada" },
+                  { color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", label: "Bloqueada" },
+                ].map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: s.bg, padding: "5px 12px", borderRadius: 20, border: `1px solid ${s.border}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color }} />
+                    <span style={{ fontSize: 12, color: s.color, fontWeight: 600 }}>{s.label}</span>
+                  </div>
+                ))}
+                <div style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af", alignSelf: "center" }}>
+                  {tables.filter(t => getTableStatus(t).label === "Libre").length} libres · {tables.filter(t => getTableStatus(t).label === "Ocupada").length} ocupadas · {tables.length} total
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                {tables.map(table => {
+                  const status = getTableStatus(table);
+                  const isOccupied = table.manual_status === 'occupied';
+                  const isBlocked = table.manual_status === 'blocked';
+                  return (
+                    <div key={table.id} className="mesa-card" style={{ background: status.bg, borderColor: status.border }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{table.label}</div>
+                          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>{table.capacity} personas</div>
+                        </div>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: status.dot, marginTop: 4, flexShrink: 0 }} />
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: status.color }}>{status.label}</div>
+                      {status.reservation && (
+                        <div style={{ fontSize: 11, color: "#374151", background: "#fff", padding: "5px 8px", borderRadius: 6, border: "1px solid #f3f4f6" }}>
+                          <div style={{ fontWeight: 600 }}>{status.reservation.customer_name}</div>
+                          <div style={{ color: "#9ca3af" }}>{status.reservation.time} · {status.reservation.guests}p</div>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
+                        {!isBlocked && !isOccupied && <button className="btn btn-red" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'occupied')}>Ocupar</button>}
+                        {isOccupied && <button className="btn btn-green" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'available')}>Liberar</button>}
+                        {!isBlocked && !isOccupied && <button className="btn btn-gray" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'blocked')}>Bloquear</button>}
+                        {isBlocked && <button className="btn btn-green" style={{ fontSize: 11, flex: 1 }} onClick={() => setTableManualStatus(table.id, 'available')}>Liberar</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {tab === "whatsapp" && (
+            <div className="card">
+              <div className="card-header">
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Estado del chatbot</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>● Activo</span>
+              </div>
+              {[
+                { label: "Número Twilio sandbox", value: "+1 415 523 8886" },
+                { label: "Webhook URL", value: "reservas-bot-production-db9b.up.railway.app/webhook" },
+                { label: "Estado", value: "Operativo" },
+              ].map((s, i) => (
+                <div key={i} className="table-row" style={{ justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 13, color: "#6b7280" }}>{s.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === "settings" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {saveMsg && (
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 16px", color: "#15803d", fontSize: 13, fontWeight: 600 }}>{saveMsg}</div>
+              )}
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Datos del restaurante</span>
+                  {!editingRestaurant
+                    ? <button className="btn btn-gray" onClick={() => setEditingRestaurant(true)}><Edit2 size={12} style={{ marginRight: 4 }} />Editar</button>
+                    : <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn btn-gray" onClick={() => setEditingRestaurant(false)}><X size={12} /></button>
+                        <button className="btn btn-dark" onClick={saveRestaurant} disabled={saving}><Save size={12} style={{ marginRight: 4 }} />{saving ? "..." : "Guardar"}</button>
+                      </div>
+                  }
+                </div>
+                {[
+                  { label: "Nombre", field: "name", icon: Utensils },
+                  { label: "Teléfono WhatsApp", field: "phone", icon: Phone },
+                  { label: "Hora apertura", field: "opening_time", icon: Clock },
+                  { label: "Hora cierre", field: "closing_time", icon: Clock },
+                  { label: "Duración slot (min)", field: "slot_duration", icon: Timer },
+                ].map(({ label, field, icon: Icon }) => (
+                  <div key={field} className="table-row" style={{ justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Icon size={14} color="#6b7280" />
+                      <span style={{ fontSize: 13, color: "#6b7280" }}>{label}</span>
+                    </div>
+                    {editingRestaurant
+                      ? <input style={{ width: 180, textAlign: "right", padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontFamily: "system-ui" }}
+                          value={restForm[field] || ""} onChange={e => setRestForm(f => ({ ...f, [field]: e.target.value }))} />
+                      : <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{restForm[field] || "—"}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Mesas ({tables.length})</span>
+                </div>
+                {tables.map(t => (
+                  <div key={t.id} className="table-row" style={{ justifyContent: "space-between" }}>
+                    {editingTable === t.id ? (
+                      <>
+                        <div style={{ display: "flex", gap: 8, flex: 1 }}>
+                          <input style={{ width: 120, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontFamily: "system-ui" }}
+                            value={tableForm.label || ""} placeholder="Nombre" onChange={e => setTableForm(f => ({ ...f, label: e.target.value }))} />
+                          <input style={{ width: 70, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontFamily: "system-ui" }}
+                            type="number" value={tableForm.capacity || ""} placeholder="Cap." onChange={e => setTableForm(f => ({ ...f, capacity: e.target.value }))} />
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-gray" onClick={() => setEditingTable(null)}><X size={12} /></button>
+                          <button className="btn btn-dark" onClick={() => saveTable(t.id)} disabled={saving}><Save size={12} style={{ marginRight: 4 }} />{saving ? "..." : "Guardar"}</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Utensils size={14} color="#6b7280" />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{t.label}</span>
+                          <span style={{ fontSize: 12, color: "#9ca3af" }}>{t.capacity} personas</span>
+                        </div>
+                        <button className="btn btn-gray" onClick={() => { setEditingTable(t.id); setTableForm({ label: t.label, capacity: t.capacity }); }}>
+                          <Edit2 size={12} style={{ marginRight: 4 }} />Editar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </main>
+    </div>
+  );
+}
