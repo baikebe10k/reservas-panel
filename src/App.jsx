@@ -275,9 +275,13 @@ export default function App() {
   const filteredReservations = useMemo(() => {
     const today = new Date().toLocaleDateString('sv-SE');
     return reservations.filter(r => {
-      const isPast = r.date < today && r.status !== 'cancelled';
-      if (!showArchived && isPast) return false;
-      if (showArchived && !isPast) return false;
+      const isPast = r.date < today;
+      const isCancelled = r.status === 'cancelled';
+      if (showArchived) {
+        if (!isPast || isCancelled) return false;
+      } else {
+        if (isPast || isCancelled) return false;
+      }
       const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
       const matchDate = !filterDate || r.date === filterDate;
       const matchStatus = !filterStatus || r.status === filterStatus;
