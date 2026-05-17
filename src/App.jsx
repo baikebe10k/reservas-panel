@@ -106,7 +106,7 @@ export default function App() {
     if (!loggedIn) return;
     loadReservations(); loadSettings();
     const channel = supabase.channel('reservations-realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reservations' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, payload => {
         loadReservations(); addNotification(payload.new);
       }).subscribe();
     return () => supabase.removeChannel(channel);
@@ -180,9 +180,13 @@ export default function App() {
   }
 
   function showSaveMsg(msg) { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 3000); }
-  function handleLogin() {
-    if (password === LOGIN_PASSWORD) { setLoggedIn(true); setLoginError(""); }
-    else setLoginError("Contraseña incorrecta");
+  async function handleLogin() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: "baikebe10k@gmail.com",
+      password: password
+    });
+    if (error) setLoginError("Contraseña incorrecta");
+    else { setLoggedIn(true); setLoginError(""); }
   }
 
   function getStats() {
@@ -251,7 +255,7 @@ export default function App() {
     return matchSearch && matchDate && matchStatus && matchHour;
   });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
     if (!searchOverview) return true;
     return r.customer_name?.toLowerCase().includes(searchOverview.toLowerCase()) || r.customer_phone?.includes(searchOverview);
