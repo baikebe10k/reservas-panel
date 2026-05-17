@@ -35,6 +35,7 @@ const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [email, setEmail] = useState("baikebe10k@gmail.com");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [tab, setTab] = useState("overview");
@@ -182,7 +183,7 @@ export default function App() {
   function showSaveMsg(msg) { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 3000); }
   async function handleLogin() {
     const { error } = await supabase.auth.signInWithPassword({
-      email: "baikebe10k@gmail.com",
+      email: email,
       password: password
     });
     if (error) setLoginError("Contraseña incorrecta");
@@ -270,7 +271,9 @@ export default function App() {
             <div><div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>ReservIA</div><div style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</div></div>
           </div>
           <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Contraseña</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Introduce tu contraseña"
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email"
+            style={{ width: "100%", padding: "10px 14px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, marginBottom: 12, fontFamily: "system-ui", boxSizing: "border-box" }} />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Contraseña"
             style={{ width: "100%", padding: "10px 14px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, marginBottom: 12, fontFamily: "system-ui", boxSizing: "border-box" }} />
           {loginError && <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 12 }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: "100%", padding: 11, background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Entrar</button>
