@@ -804,7 +804,6 @@ export default function App() {
 
         </div>
       </main>
-    </div>
 
       {showNewRes && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -830,6 +829,7 @@ export default function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
