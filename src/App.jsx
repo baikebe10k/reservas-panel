@@ -285,7 +285,31 @@ export default function App() {
     return r.customer_name?.toLowerCase().includes(searchOverview.toLowerCase()) || r.customer_phone?.includes(searchOverview);
   });
 
-  if (!loggedIn) {
+  function exportToExcel() {
+    const headers = ['Nombre','Teléfono','Fecha','Hora','Personas','Estado','Notas'];
+    const rows = reservations.map(r => [
+      r.customer_name || '',
+      r.customer_phone || '',
+      r.date || '',
+      r.time || '',
+      r.guests || '',
+      r.status || '',
+      r.notes || ''
+    ]);
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reservas_${new Date().toLocaleDateString('sv-SE')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exportación completada');
+  }
+
+    if (!loggedIn) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 4px 24px #0000000a" }}>
@@ -468,7 +492,10 @@ export default function App() {
                 )}
               </div>
               <div className="card">
-                <div className="card-header"><span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span></div>
+                <div className="card-header">
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span>
+                <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇ Exportar CSV</button>
+              </div>
                 {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
                 {!loading && filteredReservations.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas con estos filtros</div>}
                 {filteredReservations.map(r => {
