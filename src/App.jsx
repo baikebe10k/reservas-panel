@@ -59,6 +59,7 @@ export default function App() {
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterHour, setFilterHour] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [newTable, setNewTable] = useState({ label: "", capacity: "" });
   const [addingTable, setAddingTable] = useState(false);
   const [calView, setCalView] = useState("week");
@@ -271,13 +272,19 @@ export default function App() {
 
   function dateStr(d) { return d.toISOString().split("T")[0]; }
 
-  const filteredReservations = useMemo(() => reservations.filter(r => {
-    const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
-    const matchDate = !filterDate || r.date === filterDate;
-    const matchStatus = !filterStatus || r.status === filterStatus;
-    const matchHour = !filterHour || r.time?.startsWith(filterHour);
-    return matchSearch && matchDate && matchStatus && matchHour;
-  }), [reservations, search, filterDate, filterStatus, filterHour]);
+  const filteredReservations = useMemo(() => {
+    const today = new Date().toLocaleDateString('sv-SE');
+    return reservations.filter(r => {
+      const isPast = r.date < today && r.status !== 'cancelled';
+      if (!showArchived && isPast) return false;
+      if (showArchived && !isPast) return false;
+      const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
+      const matchDate = !filterDate || r.date === filterDate;
+      const matchStatus = !filterStatus || r.status === filterStatus;
+      const matchHour = !filterHour || r.time?.startsWith(filterHour);
+      return matchSearch && matchDate && matchStatus && matchHour;
+    });
+  }, [reservations, search, filterDate, filterStatus, filterHour, showArchived]);
 
   const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
@@ -493,8 +500,13 @@ export default function App() {
               </div>
               <div className="card">
                 <div className="card-header">
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span>
-                <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇ Exportar CSV</button>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} {showArchived ? 'reservas archivadas' : 'reservas activas'}</span>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn btn-gray" style={{ fontSize: 11, background: showArchived ? '#111827' : '', color: showArchived ? '#fff' : '' }} onClick={() => setShowArchived(!showArchived)}>
+                    {showArchived ? '← Volver a activas' : '🗂 Ver archivadas'}
+                  </button>
+                  <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇ Exportar CSV</button>
+                </div>
               </div>
                 {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
                 {!loading && filteredReservations.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas con estos filtros</div>}
