@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
@@ -30,6 +30,8 @@ const nav = [
   { id: "settings",     Icon: Settings,        label: "Config" },
 ];
 
+const RESTAURANT_ID = '00000000-0000-0000-0000-000000000001';
+
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -41,6 +43,8 @@ export default function App() {
   const [tab, setTab] = useState("overview");
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toast, setToast] = useState(null);
   const [restaurant, setRestaurant] = useState(null);
   const [tables, setTables] = useState([]);
   const [editingRestaurant, setEditingRestaurant] = useState(false);
@@ -66,6 +70,11 @@ export default function App() {
   const [noteText, setNoteText] = useState('');
   const audioCtx = useRef(null);
 
+  function showToast(msg, type = 'success') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
   function playSound() {
     try {
       if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -82,6 +91,7 @@ export default function App() {
   }
 
   function addNotification(reservation) {
+    if (!reservation) return;
     const id = Date.now();
     setNotifications(prev => [...prev, { id, reservation }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
@@ -168,17 +178,30 @@ export default function App() {
     await loadSettings();
   }
 
-  function getTableStatus(table) {
+  const getTableStatus = useCallback((table) => {
     if (table.manual_status === 'occupied') return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626" };
     if (table.manual_status === 'blocked') return { label: "Bloqueada", color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", dot: "#9ca3af" };
     const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
-    const activeRes = reservations.find(r => r.table_id === table.id && r.date === todayStr && r.status === "confirmed" && new Date(r.end_time) > now && new Date(r.date + "T" + r.time) <= now);
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+    const activeRes = reservations.find(r => {
+      if (r.table_id !== table.id || r.status !== "confirmed") return false;
+      const start = new Date(r.date + "T" + r.time);
+      if (isNaN(start.getTime())) return false;
+      if (!r.end_time) return false;
+      const end = new Date(r.end_time);
+      if (isNaN(end.getTime())) return false;
+      return start <= now && end > now;
+    });
     if (activeRes) return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626", reservation: activeRes };
-    const upcomingRes = reservations.find(r => r.table_id === table.id && r.date === todayStr && r.status === "confirmed" && new Date(r.date + "T" + r.time) > now);
+    const upcomingRes = reservations.find(r => {
+      if (r.table_id !== table.id || r.status !== "confirmed") return false;
+      const start = new Date(r.date + "T" + r.time);
+      if (isNaN(start.getTime())) return false;
+      return start > now;
+    });
     if (upcomingRes) return { label: "Reservada", color: "#d97706", bg: "#fffbeb", border: "#fde68a", dot: "#d97706", reservation: upcomingRes };
     return { label: "Libre", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", dot: "#16a34a" };
-  }
+  }, [reservations]);
 
   function showSaveMsg(msg) { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 3000); }
   async function handleLogin() {
@@ -190,7 +213,7 @@ export default function App() {
     else { setLoggedIn(true); setLoginError(""); }
   }
 
-  function getStats() {
+  const getStats = useMemo(() => {
     const confirmed = reservations.filter(r => r.status === "confirmed");
     const cancelled = reservations.filter(r => r.status === "cancelled");
     const totalGuests = confirmed.reduce((sum, r) => sum + (r.guests || 0), 0);
@@ -210,7 +233,7 @@ export default function App() {
     const ocupacionMesas = Object.entries(mesaCount).map(([mesa, reservas]) => ({ mesa, reservas })).sort((a, b) => b.reservas - a.reservas).slice(0, 8);
     const pieData = [{ name: 'Confirmadas', value: confirmed.length, color: '#16a34a' }, { name: 'Canceladas', value: cancelled.length, color: '#dc2626' }];
     return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRate, totalConfirmed: confirmed.length };
-  }
+  }, [reservations, tables]);
 
   function getWeekDays(date) {
     const d = new Date(date);
@@ -248,13 +271,13 @@ export default function App() {
 
   function dateStr(d) { return d.toISOString().split("T")[0]; }
 
-  const filteredReservations = reservations.filter(r => {
+  const filteredReservations = useMemo(() => reservations.filter(r => {
     const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
     const matchDate = !filterDate || r.date === filterDate;
     const matchStatus = !filterStatus || r.status === filterStatus;
     const matchHour = !filterHour || r.time?.startsWith(filterHour);
     return matchSearch && matchDate && matchStatus && matchHour;
-  });
+  }), [reservations, search, filterDate, filterStatus, filterHour]);
 
   const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
@@ -284,7 +307,7 @@ export default function App() {
 
   const confirmedCount = reservations.filter(r => r.status === "confirmed").length;
   const freeTables = tables.filter(t => getTableStatus(t).label === "Libre").length;
-  const stats = getStats();
+  const stats = getStats;
   const weekDays = getWeekDays(calDate);
   const monthDays = getMonthDays(calDate);
 
@@ -330,6 +353,17 @@ export default function App() {
         ))}
       </div>
 
+      {toast && (
+        <div style={{
+          position:'fixed',top:20,left:'50%',transform:'translateX(-50%)',
+          zIndex:9999,padding:'10px 20px',borderRadius:8,fontSize:13,fontWeight:600,
+          background: toast.type==='error' ? '#fef2f2' : '#f0fdf4',
+          color: toast.type==='error' ? '#b91c1c' : '#15803d',
+          border: `1px solid ${toast.type==='error' ? '#fecaca' : '#bbf7d0'}`,
+          boxShadow:'0 4px 12px #00000015'
+        }}>{toast.msg}</div>
+      )}
+
       <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 6px", marginBottom: 28 }}>
           <div style={{ width: 32, height: 32, background: "#111827", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}><Utensils size={16} color="#fff" /></div>
@@ -340,7 +374,7 @@ export default function App() {
             <button key={id} className={"nav-link" + (tab === id ? " active" : "")} onClick={() => setTab(id)}><Icon size={16} />{label}</button>
           ))}
         </nav>
-        <button onClick={() => setLoggedIn(false)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>Cerrar sesión</button>
+        <button onClick={async () => { await supabase.auth.signOut(); setLoggedIn(false); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>Cerrar sesión</button>
       </aside>
 
       <main style={{ flex: 1, overflowY: "auto" }}>
@@ -397,8 +431,8 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Users size={12} color="#9ca3af" /><span style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</span></div>
                       <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>Confirmar</button>}
-                        {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>Cancelar</button>}
+                        {r.status === "pending" && <button className="btn btn-green" disabled={actionLoading} onClick={() => confirmRes(r.id)}>Confirmar</button>}
+                        {r.status !== "cancelled" && <button className="btn btn-red" disabled={actionLoading} onClick={() => cancelRes(r.id)}>Cancelar</button>}
                       </div>
                     </div>
                   );
@@ -831,7 +865,7 @@ export default function App() {
             </div>
             <div style={{display:'flex',gap:10,marginTop:24,justifyContent:'flex-end'}}>
               <button className="btn btn-gray" onClick={()=>setShowNewRes(false)}>Cancelar</button>
-              <button style={{border:'none',cursor:'pointer',padding:'7px 16px',borderRadius:7,fontSize:13,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={createManualReservation}>Crear Reserva</button>
+              <button style={{border:'none',cursor:'pointer',padding:'7px 16px',borderRadius:7,fontSize:13,fontWeight:600,background:'#3b82f6',color:'#fff',opacity:actionLoading?0.6:1}} disabled={actionLoading} onClick={createManualReservation}>{actionLoading ? 'Creando...' : 'Crear Reserva'}</button>
             </div>
           </div>
         </div>
