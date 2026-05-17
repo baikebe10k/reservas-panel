@@ -59,6 +59,10 @@ export default function App() {
   const [calView, setCalView] = useState("week");
   const [calDate, setCalDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
+  const [showNewRes, setShowNewRes] = useState(false);
+  const [newRes, setNewRes] = useState({ date: '', time: '', guests: 2, name: '', phone: '', notes: '' });
+  const [editingNote, setEditingNote] = useState(null);
+  const [noteText, setNoteText] = useState('');
   const audioCtx = useRef(null);
 
   function playSound() {
@@ -107,6 +111,27 @@ export default function App() {
       }).subscribe();
     return () => supabase.removeChannel(channel);
   }, [loggedIn]);
+
+  async function createManualReservation() {
+    const { date, time, guests, name, phone, notes } = newRes;
+    if (!date || !time || !guests || !name || !phone) { alert('Rellena todos los campos'); return; }
+    const { error } = await supabase.from('reservations').insert([{
+      restaurant_id: '00000000-0000-0000-0000-000000000001',
+      customer_name: name, customer_phone: phone,
+      date, time, guests: parseInt(guests),
+      status: 'confirmed', notes: notes || null, source: 'manual'
+    }]);
+    if (error) { alert('Error: ' + error.message); return; }
+    setShowNewRes(false);
+    setNewRes({ date: '', time: '', guests: 2, name: '', phone: '', notes: '' });
+    loadReservations();
+  }
+
+  async function saveNote(id, text) {
+    const { error } = await supabase.from('reservations').update({ notes: text }).eq('id', id);
+    if (error) { alert('Error: ' + error.message); return; }
+    setEditingNote(null); setNoteText(''); loadReservations();
+  }
 
   async function confirmRes(id) { await supabase.from("reservations").update({ status: "confirmed" }).eq("id", id); loadReservations(); }
   async function cancelRes(id) { await supabase.from("reservations").update({ status: "cancelled" }).eq("id", id); loadReservations(); }
@@ -318,6 +343,7 @@ export default function App() {
             <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
           </div>
           <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); }}>↻ Actualizar</button>
+            <button style={{border:'none',cursor:'pointer',padding:'7px 14px',borderRadius:7,fontSize:12,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={() => setShowNewRes(true)}>+ Nueva Reserva</button>
         </header>
 
         <div style={{ padding: "24px 28px" }}>
@@ -416,6 +442,17 @@ export default function App() {
                       <div style={{ display: "flex", gap: 5 }}>
                         {r.status === "pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>✓</button>}
                         {r.status !== "cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>✕</button>}
+                        {editingNote === r.id ? (
+                          <span style={{display:'inline-flex',gap:4,alignItems:'center'}}>
+                            <input value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Nota..." autoFocus style={{padding:'3px 7px',borderRadius:5,border:'1px solid #e5e7eb',fontSize:12,fontFamily:'system-ui',width:130}} />
+                            <button className="btn btn-green" style={{padding:'3px 8px'}} onClick={()=>saveNote(r.id,noteText)}>✓</button>
+                            <button className="btn btn-gray" style={{padding:'3px 8px'}} onClick={()=>setEditingNote(null)}>✕</button>
+                          </span>
+                        ) : (
+                          <button title={r.notes||'Añadir nota'} className="btn btn-gray" style={{padding:'3px 8px',fontSize:13}} onClick={()=>{setEditingNote(r.id);setNoteText(r.notes||'');}}>
+                            {r.notes?'📝':'🗒️'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -767,6 +804,32 @@ export default function App() {
 
         </div>
       </main>
+    </div>
+
+      {showNewRes && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:16,padding:32,width:440,maxWidth:'95vw',boxShadow:'0 20px 60px #00000030'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+              <h3 style={{fontSize:16,fontWeight:700,color:'#111827'}}>Nueva Reserva Manual</h3>
+              <button onClick={()=>setShowNewRes(false)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'#9ca3af'}}>✕</button>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <input placeholder="Nombre *" value={newRes.name} onChange={e=>setNewRes({...newRes,name:e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui'}} />
+              <input placeholder="Teléfono *" value={newRes.phone} onChange={e=>setNewRes({...newRes,phone:e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui'}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <input type="date" value={newRes.date} onChange={e=>setNewRes({...newRes,date:e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui'}} />
+                <input type="time" value={newRes.time} onChange={e=>setNewRes({...newRes,time:e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui'}} />
+              </div>
+              <input type="number" placeholder="Personas *" min={1} max={30} value={newRes.guests} onChange={e=>setNewRes({...newRes,guests:e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui'}} />
+              <textarea placeholder="Notas (alergia, cumpleaños, VIP...)" value={newRes.notes} onChange={e=>setNewRes({...newRes,notes:e.target.value})} rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,fontFamily:'system-ui',resize:'none'}} />
+            </div>
+            <div style={{display:'flex',gap:10,marginTop:24,justifyContent:'flex-end'}}>
+              <button className="btn btn-gray" onClick={()=>setShowNewRes(false)}>Cancelar</button>
+              <button style={{border:'none',cursor:'pointer',padding:'7px 16px',borderRadius:7,fontSize:13,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={createManualReservation}>Crear Reserva</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
