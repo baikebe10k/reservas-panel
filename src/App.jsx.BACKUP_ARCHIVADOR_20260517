@@ -20,8 +20,18 @@ const STATUS = {
   pending:   { label: "Pendiente",  color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
   cancelled: { label: "Cancelada",  color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
 };
+const nav = [
+  { id: "overview",     Icon: LayoutDashboard, label: "Resumen" },
+  { id: "reservations", Icon: CalendarDays,    label: "Reservas" },
+  { id: "calendar",     Icon: Calendar,        label: "Calendario" },
+  { id: "tables",       Icon: Grid,            label: "Mesas" },
+  { id: "stats",        Icon: BarChart2,       label: "Estadísticas" },
+  { id: "whatsapp",     Icon: MessageCircle,   label: "WhatsApp" },
+  { id: "settings",     Icon: Settings,        label: "Config" },
+];
 
 const RESTAURANT_ID = '00000000-0000-0000-0000-000000000001';
+
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -49,7 +59,6 @@ export default function App() {
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterHour, setFilterHour] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
   const [newTable, setNewTable] = useState({ label: "", capacity: "" });
   const [addingTable, setAddingTable] = useState(false);
   const [calView, setCalView] = useState("week");
@@ -59,36 +68,7 @@ export default function App() {
   const [newRes, setNewRes] = useState({ date: '', time: '', guests: 2, name: '', phone: '', notes: '' });
   const [editingNote, setEditingNote] = useState(null);
   const [noteText, setNoteText] = useState('');
-  const [seenIds, setSeenIds] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('seenResIds') || '[]')); } catch { return new Set(); }
-  });
   const audioCtx = useRef(null);
-
-  // Badges: pendientes de confirmar + nuevas no vistas
-  const pendingCount = useMemo(() => reservations.filter(r => r.status === 'pending').length, [reservations]);
-  const unseenCount = useMemo(() => reservations.filter(r => !seenIds.has(r.id)).length, [reservations, seenIds]);
-
-  const nav = useMemo(() => [
-    { id: "overview",     Icon: LayoutDashboard, label: "Resumen",      badge: pendingCount },
-    { id: "reservations", Icon: CalendarDays,    label: "Reservas",     badge: unseenCount },
-    { id: "calendar",     Icon: Calendar,        label: "Calendario",   badge: 0 },
-    { id: "tables",       Icon: Grid,            label: "Mesas",        badge: 0 },
-    { id: "stats",        Icon: BarChart2,       label: "Estadísticas", badge: 0 },
-    { id: "whatsapp",     Icon: MessageCircle,   label: "WhatsApp",     badge: 0 },
-    { id: "settings",     Icon: Settings,        label: "Config",       badge: 0 },
-  ], [pendingCount, unseenCount]);
-
-  function markAllSeen() {
-    const allIds = reservations.map(r => r.id);
-    const newSeen = new Set([...seenIds, ...allIds]);
-    setSeenIds(newSeen);
-    try { localStorage.setItem('seenResIds', JSON.stringify([...newSeen])); } catch {}
-  }
-
-  // Marcar como vistas al entrar a Reservas
-  useEffect(() => {
-    if (tab === 'reservations') markAllSeen();
-  }, [tab, reservations]);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -126,10 +106,10 @@ export default function App() {
   }
 
   async function loadSettings() {
-    const { data: rest } = await supabase.from("restaurants").select("*").eq("id", RESTAURANT_ID).maybeSingle();
+    const { data: rest } = await supabase.from("restaurants").select("*").eq("id", "00000000-0000-0000-0000-000000000001").maybeSingle();
     setRestaurant(rest);
     setRestForm({ name: rest?.name || "", phone: rest?.phone || "", opening_time: rest?.opening_time || "13:00", closing_time: rest?.closing_time || "23:00", slot_duration: rest?.slot_duration || 30 });
-    const { data: tbls } = await supabase.from("tables").select("*").eq("restaurant_id", RESTAURANT_ID).order("label");
+    const { data: tbls } = await supabase.from("tables").select("*").eq("restaurant_id", "00000000-0000-0000-0000-000000000001").order("label");
     setTables(tbls || []);
   }
 
@@ -147,7 +127,7 @@ export default function App() {
     const { date, time, guests, name, phone, notes } = newRes;
     if (!date || !time || !guests || !name || !phone) { alert('Rellena todos los campos'); return; }
     const { error } = await supabase.from('reservations').insert([{
-      restaurant_id: RESTAURANT_ID,
+      restaurant_id: '00000000-0000-0000-0000-000000000001',
       customer_name: name, customer_phone: phone,
       date, time, guests: parseInt(guests),
       status: 'confirmed', notes: notes || null, source: 'manual'
@@ -169,7 +149,7 @@ export default function App() {
 
   async function saveRestaurant() {
     setSaving(true);
-    await supabase.from("restaurants").update({ name: restForm.name, phone: restForm.phone, opening_time: restForm.opening_time, closing_time: restForm.closing_time, slot_duration: parseInt(restForm.slot_duration) }).eq("id", RESTAURANT_ID);
+    await supabase.from("restaurants").update({ name: restForm.name, phone: restForm.phone, opening_time: restForm.opening_time, closing_time: restForm.closing_time, slot_duration: parseInt(restForm.slot_duration) }).eq("id", "00000000-0000-0000-0000-000000000001");
     await loadSettings(); setEditingRestaurant(false); setSaving(false); showSaveMsg("✓ Guardado correctamente");
   }
 
@@ -182,7 +162,7 @@ export default function App() {
   async function addTable() {
     if (!newTable.label || !newTable.capacity) return;
     setSaving(true);
-    await supabase.from("tables").insert([{ restaurant_id: RESTAURANT_ID, label: newTable.label, capacity: parseInt(newTable.capacity), active: true, manual_status: "available" }]);
+    await supabase.from("tables").insert([{ restaurant_id: "00000000-0000-0000-0000-000000000001", label: newTable.label, capacity: parseInt(newTable.capacity), active: true, manual_status: "available" }]);
     setNewTable({ label: "", capacity: "" }); setAddingTable(false);
     await loadSettings(); setSaving(false); showSaveMsg("✓ Mesa añadida");
   }
@@ -202,6 +182,7 @@ export default function App() {
     if (table.manual_status === 'occupied') return { label: "Ocupada", color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626" };
     if (table.manual_status === 'blocked') return { label: "Bloqueada", color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", dot: "#9ca3af" };
     const now = new Date();
+    const todayStr = new Date().toLocaleDateString('sv-SE');
     const activeRes = reservations.find(r => {
       if (r.table_id !== table.id || r.status !== "confirmed") return false;
       const start = new Date(r.date + "T" + r.time);
@@ -223,9 +204,11 @@ export default function App() {
   }, [reservations]);
 
   function showSaveMsg(msg) { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 3000); }
-
   async function handleLogin() {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
     if (error) setLoginError("Contraseña incorrecta");
     else { setLoggedIn(true); setLoginError(""); }
   }
@@ -288,23 +271,13 @@ export default function App() {
 
   function dateStr(d) { return d.toISOString().split("T")[0]; }
 
-  const filteredReservations = useMemo(() => {
-    const today = new Date().toLocaleDateString('sv-SE');
-    return reservations.filter(r => {
-      const isPast = r.date < today;
-      const isCancelled = r.status === 'cancelled';
-      if (showArchived) {
-        if (!isPast || isCancelled) return false;
-      } else {
-        if (isPast || isCancelled) return false;
-      }
-      const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
-      const matchDate = !filterDate || r.date === filterDate;
-      const matchStatus = !filterStatus || r.status === filterStatus;
-      const matchHour = !filterHour || r.time?.startsWith(filterHour);
-      return matchSearch && matchDate && matchStatus && matchHour;
-    });
-  }, [reservations, search, filterDate, filterStatus, filterHour, showArchived]);
+  const filteredReservations = useMemo(() => reservations.filter(r => {
+    const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
+    const matchDate = !filterDate || r.date === filterDate;
+    const matchStatus = !filterStatus || r.status === filterStatus;
+    const matchHour = !filterHour || r.time?.startsWith(filterHour);
+    return matchSearch && matchDate && matchStatus && matchHour;
+  }), [reservations, search, filterDate, filterStatus, filterHour]);
 
   const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
@@ -315,8 +288,13 @@ export default function App() {
   function exportToExcel() {
     const headers = ['Nombre','Teléfono','Fecha','Hora','Personas','Estado','Notas'];
     const rows = reservations.map(r => [
-      r.customer_name || '', r.customer_phone || '', r.date || '',
-      r.time || '', r.guests || '', r.status || '', r.notes || ''
+      r.customer_name || '',
+      r.customer_phone || '',
+      r.date || '',
+      r.time || '',
+      r.guests || '',
+      r.status || '',
+      r.notes || ''
     ]);
     const csvContent = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(','))
@@ -331,7 +309,7 @@ export default function App() {
     showToast('Exportación completada');
   }
 
-  if (!loggedIn) {
+    if (!loggedIn) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui" }}>
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 4px 24px #0000000a" }}>
@@ -383,10 +361,8 @@ export default function App() {
         .cal-day.other-month { opacity: 0.4; }
         @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .notif { animation: slideIn 0.3s ease; }
-        .nav-badge { background: #ef4444; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 6px; min-width: 18px; text-align: center; margin-left: auto; }
       `}</style>
 
-      {/* Notificaciones */}
       <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, display: "flex", flexDirection: "column", gap: 10 }}>
         {notifications.map(n => (
           <div key={n.id} className="notif" style={{ background: "#fff", color: "#111827", borderRadius: 12, padding: "14px 18px", minWidth: 300, boxShadow: "0 8px 24px #00000015", border: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -401,7 +377,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position:'fixed',top:20,left:'50%',transform:'translateX(-50%)',
@@ -413,19 +388,14 @@ export default function App() {
         }}>{toast.msg}</div>
       )}
 
-      {/* Sidebar */}
       <aside style={{ width: 216, background: "#fff", borderRight: "1px solid #e5e7eb", display: "flex", flexDirection: "column", padding: "20px 12px", position: "sticky", top: 0, height: "100vh" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "4px 6px", marginBottom: 28 }}>
           <div style={{ width: 32, height: 32, background: "#111827", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}><Utensils size={16} color="#fff" /></div>
           <div><div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>ReservIA</div><div style={{ fontSize: 10, color: "#9ca3af" }}>Panel Pro</div></div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-          {nav.map(({ id, Icon, label, badge }) => (
-            <button key={id} className={"nav-link" + (tab === id ? " active" : "")} onClick={() => setTab(id)}>
-              <Icon size={16} />
-              {label}
-              {badge > 0 && <span className="nav-badge">{badge}</span>}
-            </button>
+          {nav.map(({ id, Icon, label }) => (
+            <button key={id} className={"nav-link" + (tab === id ? " active" : "")} onClick={() => setTab(id)}><Icon size={16} />{label}</button>
           ))}
         </nav>
         <button onClick={async () => { await supabase.auth.signOut(); setLoggedIn(false); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>Cerrar sesión</button>
@@ -438,7 +408,7 @@ export default function App() {
             <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
           </div>
           <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); }}>↻ Actualizar</button>
-          <button style={{border:'none',cursor:'pointer',padding:'7px 14px',borderRadius:7,fontSize:12,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={() => setShowNewRes(true)}>+ Nueva Reserva</button>
+            <button style={{border:'none',cursor:'pointer',padding:'7px 14px',borderRadius:7,fontSize:12,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={() => setShowNewRes(true)}>+ Nueva Reserva</button>
         </header>
 
         <div style={{ padding: "24px 28px" }}>
@@ -523,14 +493,9 @@ export default function App() {
               </div>
               <div className="card">
                 <div className="card-header">
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} {showArchived ? 'reservas archivadas' : 'reservas activas'}</span>
-                  <div style={{display:'flex',gap:8}}>
-                    <button className="btn btn-gray" style={{ fontSize: 11, background: showArchived ? '#111827' : '', color: showArchived ? '#fff' : '' }} onClick={() => setShowArchived(!showArchived)}>
-                      {showArchived ? '← Volver a activas' : '🗂 Ver archivadas'}
-                    </button>
-                    <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇ Exportar CSV</button>
-                  </div>
-                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{filteredReservations.length} reservas</span>
+                <button className="btn btn-gray" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇ Exportar CSV</button>
+              </div>
                 {loading && <div style={{ padding: 20, color: "#9ca3af" }}>Cargando...</div>}
                 {!loading && filteredReservations.length === 0 && <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>No hay reservas con estos filtros</div>}
                 {filteredReservations.map(r => {
@@ -628,7 +593,10 @@ export default function App() {
                         return (
                           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f9fafb" }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 45 }}>{r.time}</div>
-                            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div><div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div></div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                              <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                            </div>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</div>
                             <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
                           </div>
@@ -679,7 +647,10 @@ export default function App() {
                         return (
                           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f9fafb" }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", minWidth: 45 }}>{r.time}</div>
-                            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div><div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div></div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{r.customer_name}</div>
+                              <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.customer_phone}</div>
+                            </div>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>{r.guests}p</div>
                             <span className="badge" style={{ background: S.bg, color: S.color, borderColor: S.border }}>{S.label}</span>
                           </div>
@@ -811,7 +782,7 @@ export default function App() {
                 <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>● Activo</span>
               </div>
               {[
-                { label: "Número WhatsApp", value: "+34 641 17 15 38" },
+                { label: "Número Twilio sandbox", value: "+1 415 523 8886" },
                 { label: "Webhook URL", value: "reservas-bot-production-db9b.up.railway.app/webhook" },
                 { label: "Estado", value: "Operativo" },
               ].map((s, i) => (
