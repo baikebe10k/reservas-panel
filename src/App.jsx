@@ -14,7 +14,6 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmaGdrZGVxdXBlamJpbmV3Zm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjEyNDksImV4cCI6MjA5Mzk5NzI0OX0._wjZHBkkpx5F-1uYStWCx79a9wJhoVs-UPEY5fjjCdE"
 );
 
-const LOGIN_PASSWORD = "reservia2024";
 const STATUS = {
   confirmed: { label: "Confirmada", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
   pending:   { label: "Pendiente",  color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
@@ -32,6 +31,8 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [tab, setTab] = useState("overview");
   const [reservations, setReservations] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConv, setSelectedConv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -63,19 +64,38 @@ export default function App() {
     try { return new Set(JSON.parse(localStorage.getItem('seenResIds') || '[]')); } catch { return new Set(); }
   });
   const audioCtx = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  // Badges: pendientes de confirmar + nuevas no vistas
   const pendingCount = useMemo(() => reservations.filter(r => r.status === 'pending').length, [reservations]);
   const unseenCount = useMemo(() => reservations.filter(r => !seenIds.has(r.id)).length, [reservations, seenIds]);
 
+  // Agrupar conversaciones por teléfono
+  const convsByPhone = useMemo(() => {
+    const map = {};
+    conversations.forEach(msg => {
+      if (!map[msg.customer_phone]) {
+        map[msg.customer_phone] = { phone: msg.customer_phone, name: msg.customer_name, messages: [], last_at: msg.created_at };
+      }
+      map[msg.customer_phone].messages.push(msg);
+      if (msg.created_at > map[msg.customer_phone].last_at) {
+        map[msg.customer_phone].last_at = msg.created_at;
+        if (msg.customer_name) map[msg.customer_phone].name = msg.customer_name;
+      }
+    });
+    return Object.values(map).sort((a, b) => new Date(b.last_at) - new Date(a.last_at));
+  }, [conversations]);
+
+  const unreadConvCount = useMemo(() => convsByPhone.length, [convsByPhone]);
+
   const nav = useMemo(() => [
-    { id: "overview",     Icon: LayoutDashboard, label: "Resumen",      badge: pendingCount },
-    { id: "reservations", Icon: CalendarDays,    label: "Reservas",     badge: unseenCount },
-    { id: "calendar",     Icon: Calendar,        label: "Calendario",   badge: 0 },
-    { id: "tables",       Icon: Grid,            label: "Mesas",        badge: 0 },
-    { id: "stats",        Icon: BarChart2,       label: "Estadísticas", badge: 0 },
-    { id: "whatsapp",     Icon: MessageCircle,   label: "WhatsApp",     badge: 0 },
-    { id: "settings",     Icon: Settings,        label: "Config",       badge: 0 },
+    { id: "overview",       Icon: LayoutDashboard, label: "Resumen",        badge: pendingCount },
+    { id: "reservations",   Icon: CalendarDays,    label: "Reservas",       badge: unseenCount },
+    { id: "calendar",       Icon: Calendar,        label: "Calendario",     badge: 0 },
+    { id: "tables",         Icon: Grid,            label: "Mesas",          badge: 0 },
+    { id: "stats",          Icon: BarChart2,       label: "Estadísticas",   badge: 0 },
+    { id: "whatsapp",       Icon: MessageCircle,   label: "WhatsApp",       badge: 0 },
+    { id: "conversations",  Icon: MessageCircle,   label: "Conversaciones", badge: 0 },
+    { id: "settings",       Icon: Settings,        label: "Config",         badge: 0 },
   ], [pendingCount, unseenCount]);
 
   function markAllSeen() {
@@ -85,10 +105,16 @@ export default function App() {
     try { localStorage.setItem('seenResIds', JSON.stringify([...newSeen])); } catch {}
   }
 
-  // Marcar como vistas al entrar a Reservas
   useEffect(() => {
     if (tab === 'reservations') markAllSeen();
   }, [tab, reservations]);
+
+  // Scroll al último mensaje
+  useEffect(() => {
+    if (tab === 'conversations') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedConv, tab]);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -125,6 +151,11 @@ export default function App() {
     setLoading(false);
   }
 
+  async function loadConversations() {
+    const { data } = await supabase.from("conversations").select("*").eq("restaurant_id", RESTAURANT_ID).order("created_at", { ascending: true });
+    setConversations(data || []);
+  }
+
   async function loadSettings() {
     const { data: rest } = await supabase.from("restaurants").select("*").eq("id", RESTAURANT_ID).maybeSingle();
     setRestaurant(rest);
@@ -135,12 +166,24 @@ export default function App() {
 
   useEffect(() => {
     if (!loggedIn) return;
-    loadReservations(); loadSettings();
-    const channel = supabase.channel('reservations-realtime')
+    loadReservations();
+    loadSettings();
+    loadConversations();
+
+    const resChannel = supabase.channel('reservations-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, payload => {
         loadReservations(); addNotification(payload.new);
       }).subscribe();
-    return () => supabase.removeChannel(channel);
+
+    const convChannel = supabase.channel('conversations-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, () => {
+        loadConversations();
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(resChannel);
+      supabase.removeChannel(convChannel);
+    };
   }, [loggedIn]);
 
   async function createManualReservation() {
@@ -321,7 +364,7 @@ export default function App() {
     const csvContent = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(','))
       .join('\n');
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([' ' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -384,6 +427,12 @@ export default function App() {
         @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .notif { animation: slideIn 0.3s ease; }
         .nav-badge { background: #ef4444; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 6px; min-width: 18px; text-align: center; margin-left: auto; }
+        .conv-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: background 0.1s; }
+        .conv-item:hover { background: #f9fafb; }
+        .conv-item.active { background: #f0fdf4; border-left: 3px solid #16a34a; }
+        .msg-bubble { max-width: 75%; padding: 9px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+        .msg-in { background: #f3f4f6; color: #111827; border-bottom-left-radius: 4px; align-self: flex-start; }
+        .msg-out { background: #111827; color: #fff; border-bottom-right-radius: 4px; align-self: flex-end; }
       `}</style>
 
       {/* Notificaciones */}
@@ -437,7 +486,7 @@ export default function App() {
             <h1 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{restaurant?.name || "Restaurante"}</h1>
             <p style={{ fontSize: 12, color: "#9ca3af" }}>Panel de control</p>
           </div>
-          <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); }}>↻ Actualizar</button>
+          <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); loadConversations(); }}>↻ Actualizar</button>
           <button style={{border:'none',cursor:'pointer',padding:'7px 14px',borderRadius:7,fontSize:12,fontWeight:600,background:'#3b82f6',color:'#fff'}} onClick={() => setShowNewRes(true)}>+ Nueva Reserva</button>
         </header>
 
@@ -593,7 +642,6 @@ export default function App() {
                   <button onClick={() => setCalView("month")} style={{ padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "system-ui", background: calView === "month" ? "#fff" : "transparent", color: calView === "month" ? "#111827" : "#6b7280", boxShadow: calView === "month" ? "0 1px 3px #0000000d" : "none" }}>Mes</button>
                 </div>
               </div>
-
               {calView === "week" && (
                 <div className="card">
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #f3f4f6" }}>
@@ -620,9 +668,7 @@ export default function App() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>
                         {new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
                       </div>
-                      {reservations.filter(r => r.date === selectedDate).length === 0 && (
-                        <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>
-                      )}
+                      {reservations.filter(r => r.date === selectedDate).length === 0 && <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>}
                       {reservations.filter(r => r.date === selectedDate).sort((a, b) => a.time?.localeCompare(b.time)).map(r => {
                         const S = STATUS[r.status] || STATUS.confirmed;
                         return (
@@ -638,7 +684,6 @@ export default function App() {
                   )}
                 </div>
               )}
-
               {calView === "month" && (
                 <div className="card">
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #f3f4f6" }}>
@@ -657,11 +702,7 @@ export default function App() {
                           style={{ background: isSelected ? "#f0fdf4" : "white", borderColor: isToday ? "#111827" : isSelected ? "#bbf7d0" : "#f3f4f6" }}
                           onClick={() => setSelectedDate(isSelected ? null : ds)}>
                           <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? "#111827" : "#374151", marginBottom: 4 }}>{d.getDate()}</div>
-                          {dayRes.length > 0 && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              <div style={{ background: "#111827", borderRadius: 4, padding: "2px 5px", fontSize: 10, fontWeight: 600, color: "#fff" }}>{dayRes.length} res.</div>
-                            </div>
-                          )}
+                          {dayRes.length > 0 && <div style={{ background: "#111827", borderRadius: 4, padding: "2px 5px", fontSize: 10, fontWeight: 600, color: "#fff" }}>{dayRes.length} res.</div>}
                         </div>
                       );
                     })}
@@ -671,9 +712,7 @@ export default function App() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 12 }}>
                         {new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
                       </div>
-                      {reservations.filter(r => r.date === selectedDate).length === 0 && (
-                        <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>
-                      )}
+                      {reservations.filter(r => r.date === selectedDate).length === 0 && <div style={{ color: "#9ca3af", fontSize: 13 }}>No hay reservas este día</div>}
                       {reservations.filter(r => r.date === selectedDate).sort((a, b) => a.time?.localeCompare(b.time)).map(r => {
                         const S = STATUS[r.status] || STATUS.confirmed;
                         return (
@@ -820,6 +859,97 @@ export default function App() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{s.value}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {tab === "conversations" && (
+            <div style={{ display: "flex", gap: 16, height: "calc(100vh - 140px)" }}>
+              {/* Lista de conversaciones */}
+              <div className="card" style={{ width: 280, flexShrink: 0, overflowY: "auto" }}>
+                <div className="card-header">
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Conversaciones</span>
+                  <span style={{ fontSize: 11, color: "#9ca3af" }}>{convsByPhone.length}</span>
+                </div>
+                {convsByPhone.length === 0 && (
+                  <div style={{ padding: 24, textAlign: "center" }}>
+                    <MessageCircle size={32} color="#e5e7eb" style={{ margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, color: "#9ca3af" }}>Sin conversaciones aún</div>
+                    <div style={{ fontSize: 11, color: "#d1d5db", marginTop: 4 }}>Aparecerán cuando el bot reciba mensajes</div>
+                  </div>
+                )}
+                {convsByPhone.map(conv => {
+                  const lastMsg = conv.messages[conv.messages.length - 1];
+                  const isActive = selectedConv === conv.phone;
+                  const clientRes = reservations.filter(r => r.customer_phone === conv.phone);
+                  return (
+                    <div key={conv.phone} className={"conv-item" + (isActive ? " active" : "")} onClick={() => setSelectedConv(conv.phone)}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{conv.name || conv.phone}</div>
+                        <div style={{ fontSize: 10, color: "#9ca3af" }}>{new Date(conv.last_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>
+                        {lastMsg?.direction === 'outbound' ? '🤖 ' : ''}{lastMsg?.message || ''}
+                      </div>
+                      {clientRes.length > 0 && (
+                        <div style={{ marginTop: 6, display: "flex", gap: 4 }}>
+                          {clientRes.slice(0, 2).map(r => (
+                            <span key={r.id} className="badge" style={{ background: STATUS[r.status]?.bg, color: STATUS[r.status]?.color, borderColor: STATUS[r.status]?.border, fontSize: 10 }}>
+                              {r.date} {r.time}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Panel de mensajes */}
+              <div className="card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {!selectedConv ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
+                    <MessageCircle size={40} color="#e5e7eb" />
+                    <div style={{ fontSize: 13, color: "#9ca3af" }}>Selecciona una conversación</div>
+                  </div>
+                ) : (() => {
+                  const conv = convsByPhone.find(c => c.phone === selectedConv);
+                  const clientRes = reservations.filter(r => r.customer_phone === selectedConv);
+                  return (
+                    <>
+                      {/* Header conversación */}
+                      <div className="card-header">
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{conv?.name || selectedConv}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{selectedConv}</div>
+                        </div>
+                        {clientRes.length > 0 && (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {clientRes.map(r => (
+                              <span key={r.id} className="badge" style={{ background: STATUS[r.status]?.bg, color: STATUS[r.status]?.color, borderColor: STATUS[r.status]?.border }}>
+                                {r.date} · {r.time} · {r.guests}p
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Mensajes */}
+                      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {conv?.messages.map(msg => (
+                          <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.direction === 'outbound' ? 'flex-end' : 'flex-start' }}>
+                            <div className={"msg-bubble " + (msg.direction === 'outbound' ? 'msg-out' : 'msg-in')}>
+                              {msg.message}
+                            </div>
+                            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2, paddingLeft: 4, paddingRight: 4 }}>
+                              {new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           )}
 
