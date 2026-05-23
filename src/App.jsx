@@ -216,7 +216,13 @@ export default function App() {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
     playSound();
   }
-
+  function addCancelNotification(reservation) {
+    if (!reservation) return;
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, reservation, type: 'cancel' }]);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
+    playSound();
+  }
   async function loadReservations() {
     setLoading(true);
     const { data } = await supabase.from("reservations").select("*").order("date", { ascending: false });
@@ -246,6 +252,8 @@ export default function App() {
         loadReservations();
         if (payload.eventType === 'INSERT' && payload.new?.status !== 'cancelled') {
           addNotification(payload.new);
+        } else if (payload.eventType === 'UPDATE' && payload.new?.status === 'cancelled') {
+          addCancelNotification(payload.new);
         }
       }).subscribe();
 
@@ -484,7 +492,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
           <div key={n.id} className="notif" style={{ background:"#fff", color:"#111827", borderRadius:12, padding:"14px 18px", minWidth:300, boxShadow:"0 8px 24px #00000015", border:"1px solid #e5e7eb", display:"flex", alignItems:"flex-start", gap:12 }}>
             <div style={{ width:36, height:36, background:"#f0fdf4", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:"1px solid #bbf7d0" }}><Bell size={16} color="#16a34a" /></div>
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:"#111827", marginBottom:2 }}>{t.newReservation}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"#111827", marginBottom:2 }}>{n.type === 'cancel' ? '❌ Reserva cancelada' : t.newReservation}</div>
               <div style={{ fontSize:12, color:"#374151" }}>{n.reservation.customer_name} · {n.reservation.time} · {n.reservation.guests}p</div>
               <div style={{ fontSize:11, color:"#9ca3af", marginTop:2 }}>{n.reservation.date}</div>
             </div>
