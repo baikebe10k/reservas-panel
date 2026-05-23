@@ -134,7 +134,7 @@ export default function App() {
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterHour, setFilterHour] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
+  const [subTab, setSubTab] = useState('active');
   const [newTable, setNewTable] = useState({ label: "", capacity: "" });
   const [addingTable, setAddingTable] = useState(false);
   const [calView, setCalView] = useState("week");
@@ -388,15 +388,16 @@ export default function App() {
     const today = new Date().toLocaleDateString('sv-SE');
     return reservations.filter(r => {
       const isPast = r.date < today, isCancelled = r.status === 'cancelled';
-      if (showArchived) { if (!isPast || isCancelled) return false; }
-      else { if (isPast || isCancelled) return false; }
+      if (subTab === 'active') { if (isPast || isCancelled) return false; }
+else if (subTab === 'cancelled') { if (!isCancelled) return false; }
+else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
       const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
       const matchDate = !filterDate || r.date === filterDate;
       const matchStatus = !filterStatus || r.status === filterStatus;
       const matchHour = !filterHour || r.time?.startsWith(filterHour);
       return matchSearch && matchDate && matchStatus && matchHour;
     });
-  }, [reservations, search, filterDate, filterStatus, filterHour, showArchived]);
+  }, [reservations, search, filterDate, filterStatus, filterHour, subTab]);
 
   const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
@@ -613,11 +614,13 @@ export default function App() {
               </div>
               <div className="card">
                 <div className="card-header">
-                  <span style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{filteredReservations.length} {showArchived ? t.archivedRes : t.activeRes}</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{filteredReservations.length} {subTab === 'active' ? t.activeRes : subTab === 'cancelled' ? t.cancelled : t.archivedRes}</span>
                   <div style={{ display:'flex', gap:8 }}>
-                    <button className="btn btn-gray" style={{ fontSize:11, background:showArchived?'#111827':'', color:showArchived?'#fff':'' }} onClick={() => setShowArchived(!showArchived)}>
-                      {showArchived ? t.backToActive : t.viewArchived}
-                    </button>
+                  <div style={{display:'flex',gap:4,background:'#f3f4f6',borderRadius:8,padding:4}}>
+  <button className="btn" style={{fontSize:11,background:subTab==='active'?'#111827':'#f3f4f6',color:subTab==='active'?'#fff':'#374151',borderColor:subTab==='active'?'#111827':'#e5e7eb'}} onClick={()=>setSubTab('active')}>{t.activeRes}</button>
+  <button className="btn" style={{fontSize:11,background:subTab==='cancelled'?'#dc2626':'#f3f4f6',color:subTab==='cancelled'?'#fff':'#374151',borderColor:subTab==='cancelled'?'#dc2626':'#e5e7eb'}} onClick={()=>setSubTab('cancelled')}>{t.cancelled}</button>
+  <button className="btn" style={{fontSize:11,background:subTab==='archived'?'#111827':'#f3f4f6',color:subTab==='archived'?'#fff':'#374151',borderColor:subTab==='archived'?'#111827':'#e5e7eb'}} onClick={()=>setSubTab('archived')}>{t.archivedRes}</button>
+</div>
                     <button className="btn btn-gray" style={{ fontSize:11 }} onClick={exportToExcel}>{t.exportCsv}</button>
                   </div>
                 </div>
