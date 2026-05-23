@@ -1,4 +1,4 @@
-cat > /Users/nerea/Desktop/reservas-panel/src/App.jsx << 'ENDOFFILE'
+
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
