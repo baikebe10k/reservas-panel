@@ -223,7 +223,7 @@ export default function App() {
     try {
       await fetch('https://reservas-bot-production-db9b.up.railway.app/set-manual-mode', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: {'Content-Type':'application/json', 'x-panel-token': import.meta.env.VITE_PANEL_TOKEN || 'reservia_panel_2026_xK9mP3'},
         body: JSON.stringify({ phone, restaurantId: RESTAURANT_ID, active: newActive })
       });
     } catch(e) { console.error('Error setting manual mode:', e); }
@@ -234,7 +234,11 @@ export default function App() {
     setSendingReply(true);
     try{
       await fetch('https://reservas-bot-production-db9b.up.railway.app/send-message',{
-        method:'POST',headers:{'Content-Type':'application/json'},
+        method: 'POST',
+headers: {
+  'Content-Type': 'application/json',
+  'x-panel-token': import.meta.env.VITE_PANEL_TOKEN || 'reservia_panel_2026_xK9mP3'
+},
         body:JSON.stringify({phone,message:replyText,restaurantId:RESTAURANT_ID})
       });
       await supabase.from('conversations').insert([{
