@@ -864,7 +864,7 @@ export default function App() {
                   </div>
                   {selectedDate && (
                     <div style={{ padding:16, borderTop:"1px solid #f3f4f6" }}>
-                      <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:12 }}>{new Date(selectedDate+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:12 }}>{new Date(selectedDate+'T12:00:00Z').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long', timeZone:'Europe/Madrid'})}</div>
                       {reservations.filter(r=>r.date===selectedDate).length===0 && <div style={{ color:"#9ca3af", fontSize:13 }}>{t.noResDay}</div>}
                       {reservations.filter(r=>r.date===selectedDate).sort((a,b)=>a.time?.localeCompare(b.time)).map(r => {
                         const S=STATUS[r.status]||STATUS.confirmed;
