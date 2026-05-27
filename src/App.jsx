@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -26,7 +25,6 @@ const TRANSLATIONS = {
     newRes: "+ Nueva Reserva", logout: "Cerrar sesión",
     searchPlaceholder: "Buscar...", allStatus: "Todos los estados",
     activeRes: "reservas activas", archivedRes: "reservas archivadas",
-    viewArchived: "🗂 Ver archivadas", backToActive: "← Volver a activas",
     exportCsv: "⬇ Exportar CSV", addNote: "Añadir nota",
     newManualRes: "Nueva Reserva Manual", name: "Nombre", phone: "Teléfono",
     guests: "Personas", notes: "Notas (alergia, cumpleaños, VIP...)",
@@ -50,6 +48,10 @@ const TRANSLATIONS = {
     reservasHoy: "Reservas hoy", mesasLibres: "Mesas libres", totalReservas: "Total reservas",
     panelControl: "Panel de control", searchName: "Buscar nombre o teléfono...",
     allHours: "Todas las horas", clear: "✕ Limpiar", newReservation: "Nueva reserva!",
+    openDays: "Días de apertura", shifts: "Turnos", addShift: "Añadir turno",
+    shiftName: "Nombre turno (ej: Comida)", shiftStart: "Inicio", shiftEnd: "Fin",
+    deleteShift: "¿Eliminar este turno?", noShifts: "Sin turnos — se usa horario general",
+    cancelledTab: "Canceladas",
   },
   ca: {
     overview: "Resum", reservations: "Reserves", calendar: "Calendari",
@@ -61,7 +63,6 @@ const TRANSLATIONS = {
     newRes: "+ Nova Reserva", logout: "Tancar sessió",
     searchPlaceholder: "Cercar...", allStatus: "Tots els estats",
     activeRes: "reserves actives", archivedRes: "reserves arxivades",
-    viewArchived: "🗂 Veure arxivades", backToActive: "← Tornar a actives",
     exportCsv: "⬇ Exportar CSV", addNote: "Afegir nota",
     newManualRes: "Nova Reserva Manual", name: "Nom", phone: "Telèfon",
     guests: "Persones", notes: "Notes (al·lèrgia, aniversari, VIP...)",
@@ -85,6 +86,10 @@ const TRANSLATIONS = {
     reservasHoy: "Reserves avui", mesasLibres: "Taules lliures", totalReservas: "Total reserves",
     panelControl: "Tauler de control", searchName: "Cercar nom o telèfon...",
     allHours: "Totes les hores", clear: "✕ Netejar", newReservation: "Nova reserva!",
+    openDays: "Dies d'apertura", shifts: "Torns", addShift: "Afegir torn",
+    shiftName: "Nom torn (ex: Dinar)", shiftStart: "Inici", shiftEnd: "Fi",
+    deleteShift: "Eliminar aquest torn?", noShifts: "Sense torns — s'usa horari general",
+    cancelledTab: "Cancel·lades",
   }
 };
 
@@ -99,6 +104,16 @@ const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const DAYS_CA = ['Dg', 'Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds'];
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MONTHS_CA = ['Gener','Febrer','Març','Abril','Maig','Juny','Juliol','Agost','Setembre','Octubre','Novembre','Desembre'];
+
+const WEEKDAYS_CONFIG = [
+  { key: 'monday',    es: 'Lun', ca: 'Dl' },
+  { key: 'tuesday',   es: 'Mar', ca: 'Dt' },
+  { key: 'wednesday', es: 'Mié', ca: 'Dc' },
+  { key: 'thursday',  es: 'Jue', ca: 'Dj' },
+  { key: 'friday',    es: 'Vie', ca: 'Dv' },
+  { key: 'saturday',  es: 'Sáb', ca: 'Ds' },
+  { key: 'sunday',    es: 'Dom', ca: 'Dg' },
+];
 
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem('reservia_lang') || 'es');
@@ -144,14 +159,25 @@ export default function App() {
   const [newRes, setNewRes] = useState({ date: '', time: '', guests: 2, name: '', phone: '', notes: '' });
   const [editingNote, setEditingNote] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [openDays, setOpenDays] = useState([]);
+  const [shifts, setShifts] = useState([]);
+  const [addingShift, setAddingShift] = useState(false);
+  const [newShift, setNewShift] = useState({ name: '', start: '', end: '' });
   const [seenIds, setSeenIds] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('seenResIds') || '[]')); } catch { return new Set(); }
   });
   const audioCtx = useRef(null);
   const messagesEndRef = useRef(null);
 
+  const today = new Date().toLocaleDateString('sv-SE');
+
   const pendingCount = useMemo(() => reservations.filter(r => r.status === 'pending').length, [reservations]);
-  const unseenCount = useMemo(() => reservations.filter(r => !seenIds.has(r.id)).length, [reservations, seenIds]);
+
+  // FIX BADGE: solo reservas futuras no vistas y no canceladas
+  const unseenCount = useMemo(() =>
+    reservations.filter(r => !seenIds.has(r.id) && r.date >= today && r.status !== 'cancelled').length,
+    [reservations, seenIds, today]
+  );
 
   const convsByPhone = useMemo(() => {
     const map = {};
@@ -180,7 +206,7 @@ export default function App() {
   ], [pendingCount, unseenCount, t]);
 
   function markAllSeen() {
-    const allIds = reservations.map(r => r.id);
+    const allIds = reservations.filter(r => r.date >= today && r.status !== 'cancelled').map(r => r.id);
     const newSeen = new Set([...seenIds, ...allIds]);
     setSeenIds(newSeen);
     try { localStorage.setItem('seenResIds', JSON.stringify([...newSeen])); } catch {}
@@ -212,10 +238,12 @@ export default function App() {
   function addNotification(reservation) {
     if (!reservation) return;
     const id = Date.now();
-    setNotifications(prev => [...prev, { id, reservation }]);
+    setNotifications(prev => [...prev, { id, reservation, type: 'new' }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
     playSound();
   }
+
+  // FIX NOTIFICACIONES: función separada para cancelaciones
   function addCancelNotification(reservation) {
     if (!reservation) return;
     const id = Date.now();
@@ -223,6 +251,7 @@ export default function App() {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 10000);
     playSound();
   }
+
   async function loadReservations() {
     setLoading(true);
     const { data } = await supabase.from("reservations").select("*").order("date", { ascending: false });
@@ -238,7 +267,15 @@ export default function App() {
   async function loadSettings() {
     const { data: rest } = await supabase.from("restaurants").select("*").eq("id", RESTAURANT_ID).maybeSingle();
     setRestaurant(rest);
-    setRestForm({ name: rest?.name || "", phone: rest?.phone || "", opening_time: rest?.opening_time || "13:00", closing_time: rest?.closing_time || "23:00", slot_duration: rest?.slot_duration || 30 });
+    setRestForm({
+      name: rest?.name || "",
+      phone: rest?.phone || "",
+      opening_time: rest?.opening_time || "13:00",
+      closing_time: rest?.closing_time || "23:00",
+      slot_duration: rest?.slot_duration || 30
+    });
+    setOpenDays(rest?.open_days || ["monday","tuesday","wednesday","thursday","friday","saturday"]);
+    setShifts(rest?.shifts || []);
     const { data: tbls } = await supabase.from("tables").select("*").eq("restaurant_id", RESTAURANT_ID).order("label");
     setTables(tbls || []);
   }
@@ -250,9 +287,14 @@ export default function App() {
     const resChannel = supabase.channel('reservations-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, payload => {
         loadReservations();
-        if (payload.eventType === 'INSERT' && payload.new?.status !== 'cancelled') {
-          addNotification(payload.new);
-        } else if (payload.eventType === 'UPDATE' && payload.new?.status === 'cancelled') {
+        // FIX: INSERT nuevo → notificación verde; UPDATE a cancelled → notificación roja
+        if (payload.eventType === 'INSERT') {
+          if (payload.new?.status === 'cancelled') {
+            addCancelNotification(payload.new);
+          } else {
+            addNotification(payload.new);
+          }
+        } else if (payload.eventType === 'UPDATE' && payload.new?.status === 'cancelled' && payload.old?.status !== 'cancelled') {
           addCancelNotification(payload.new);
         }
       }).subscribe();
@@ -289,7 +331,15 @@ export default function App() {
 
   async function saveRestaurant() {
     setSaving(true);
-    await supabase.from("restaurants").update({ name: restForm.name, phone: restForm.phone, opening_time: restForm.opening_time, closing_time: restForm.closing_time, slot_duration: parseInt(restForm.slot_duration) }).eq("id", RESTAURANT_ID);
+    await supabase.from("restaurants").update({
+      name: restForm.name,
+      phone: restForm.phone,
+      opening_time: restForm.opening_time,
+      closing_time: restForm.closing_time,
+      slot_duration: parseInt(restForm.slot_duration),
+      open_days: openDays,
+      shifts: shifts
+    }).eq("id", RESTAURANT_ID);
     await loadSettings(); setEditingRestaurant(false); setSaving(false); showSaveMsg(t.savedOk);
   }
 
@@ -318,10 +368,28 @@ export default function App() {
     await loadSettings();
   }
 
+  function toggleOpenDay(day) {
+    setOpenDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+  }
+
+  function addShift() {
+    if (!newShift.name || !newShift.start || !newShift.end) return;
+    setShifts(prev => [...prev, { ...newShift, id: Date.now().toString() }]);
+    setNewShift({ name: '', start: '', end: '' });
+    setAddingShift(false);
+  }
+
+  function deleteShift(id) {
+    if (!confirm(t.deleteShift)) return;
+    setShifts(prev => prev.filter(s => s.id !== id));
+  }
+
+  // FIX MESAS: solo "Reservada" si la reserva es HOY
   const getTableStatus = useCallback((table) => {
     if (table.manual_status === 'occupied') return { label: t.occupied, color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626" };
     if (table.manual_status === 'blocked') return { label: t.blocked, color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb", dot: "#9ca3af" };
     const now = new Date();
+    const todayStr = now.toLocaleDateString('sv-SE');
     const activeRes = reservations.find(r => {
       if (r.table_id !== table.id || r.status !== "confirmed") return false;
       const start = new Date(r.date + "T" + r.time);
@@ -331,8 +399,10 @@ export default function App() {
       return start <= now && end > now;
     });
     if (activeRes) return { label: t.occupied, color: "#dc2626", bg: "#fef2f2", border: "#fecaca", dot: "#dc2626", reservation: activeRes };
+    // FIX: solo "Reservada" si es HOY
     const upcomingRes = reservations.find(r => {
       if (r.table_id !== table.id || r.status !== "confirmed") return false;
+      if (r.date !== todayStr) return false;
       const start = new Date(r.date + "T" + r.time);
       if (isNaN(start.getTime())) return false;
       return start > now;
@@ -393,12 +463,12 @@ export default function App() {
   function dateStr(d) { return d.toISOString().split("T")[0]; }
 
   const filteredReservations = useMemo(() => {
-    const today = new Date().toLocaleDateString('sv-SE');
+    const todayStr = new Date().toLocaleDateString('sv-SE');
     return reservations.filter(r => {
-      const isPast = r.date < today, isCancelled = r.status === 'cancelled';
+      const isPast = r.date < todayStr, isCancelled = r.status === 'cancelled';
       if (subTab === 'active') { if (isPast || isCancelled) return false; }
-else if (subTab === 'cancelled') { if (!isCancelled) return false; }
-else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
+      else if (subTab === 'cancelled') { if (!isCancelled) return false; }
+      else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
       const matchSearch = !search || r.customer_name?.toLowerCase().includes(search.toLowerCase()) || r.customer_phone?.includes(search);
       const matchDate = !filterDate || r.date === filterDate;
       const matchStatus = !filterStatus || r.status === filterStatus;
@@ -407,7 +477,6 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
     });
   }, [reservations, search, filterDate, filterStatus, filterHour, subTab]);
 
-  const today = new Date().toLocaleDateString('sv-SE');
   const todayRes = reservations.filter(r => r.date === today).filter(r => {
     if (!searchOverview) return true;
     return r.customer_name?.toLowerCase().includes(searchOverview.toLowerCase()) || r.customer_phone?.includes(searchOverview);
@@ -420,7 +489,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `reservas_${new Date().toLocaleDateString('sv-SE')}.csv`; a.click();
-    URL.revokeObjectURL(url); showToast(t.exportCsv);
+    URL.revokeObjectURL(url);
   }
 
   if (!loggedIn) {
@@ -484,15 +553,25 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
         .lang-btn { padding:4px 10px; border-radius:6px; border:1px solid #e5e7eb; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
         .lang-btn.active { background:#111827; color:#fff; border-color:#111827; }
         .lang-btn:not(.active) { background:#fff; color:#6b7280; }
+        .day-chip { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; border:1.5px solid #e5e7eb; cursor:pointer; font-size:12px; font-weight:700; transition:all 0.15s; user-select:none; }
+        .day-chip.on { background:#111827; color:#fff; border-color:#111827; }
+        .day-chip.off { background:#fff; color:#9ca3af; }
+        .archived-table { width:100%; border-collapse:collapse; font-size:12px; }
+        .archived-table th { background:#f3f4f6; padding:9px 14px; text-align:left; font-weight:600; color:#6b7280; border-bottom:2px solid #e5e7eb; white-space:nowrap; }
+        .archived-table td { padding:9px 14px; border-bottom:1px solid #f3f4f6; color:#374151; white-space:nowrap; }
+        .archived-table tr:last-child td { border-bottom:none; }
+        .archived-table tbody tr:hover td { background:#f9fafb; }
       `}</style>
 
       {/* Notificaciones */}
       <div style={{ position:"fixed", top:20, right:20, zIndex:999, display:"flex", flexDirection:"column", gap:10 }}>
         {notifications.map(n => (
-          <div key={n.id} className="notif" style={{ background:"#fff", color:"#111827", borderRadius:12, padding:"14px 18px", minWidth:300, boxShadow:"0 8px 24px #00000015", border:"1px solid #e5e7eb", display:"flex", alignItems:"flex-start", gap:12 }}>
-            <div style={{ width:36, height:36, background:"#f0fdf4", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:"1px solid #bbf7d0" }}><Bell size={16} color="#16a34a" /></div>
+          <div key={n.id} className="notif" style={{ background:"#fff", color:"#111827", borderRadius:12, padding:"14px 18px", minWidth:300, boxShadow:"0 8px 24px #00000015", border:`1px solid ${n.type==='cancel'?'#fecaca':'#e5e7eb'}`, display:"flex", alignItems:"flex-start", gap:12 }}>
+            <div style={{ width:36, height:36, background:n.type==='cancel'?"#fef2f2":"#f0fdf4", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1px solid ${n.type==='cancel'?'#fecaca':'#bbf7d0'}` }}>
+              <Bell size={16} color={n.type==='cancel'?"#dc2626":"#16a34a"} />
+            </div>
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:"#111827", marginBottom:2 }}>{n.type === 'cancel' ? '❌ Reserva cancelada' : t.newReservation}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:"#111827", marginBottom:2 }}>{n.type==='cancel' ? '❌ Reserva cancelada' : '🟢 ' + t.newReservation}</div>
               <div style={{ fontSize:12, color:"#374151" }}>{n.reservation.customer_name} · {n.reservation.time} · {n.reservation.guests}p</div>
               <div style={{ fontSize:11, color:"#9ca3af", marginTop:2 }}>{n.reservation.date}</div>
             </div>
@@ -521,7 +600,6 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </button>
           ))}
         </nav>
-        {/* Selector de idioma */}
         <div style={{ display:"flex", gap:4, marginBottom:10, padding:"0 2px" }}>
           <span style={{ fontSize:12, color:"#9ca3af", alignSelf:"center", marginRight:4 }}>🌐</span>
           <button className={"lang-btn" + (lang==='es' ? " active" : "")} onClick={() => toggleLang('es')}>ES</button>
@@ -536,20 +614,23 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             <h1 style={{ fontSize:16, fontWeight:700, color:"#111827" }}>{restaurant?.name || "Restaurante"}</h1>
             <p style={{ fontSize:12, color:"#9ca3af" }}>{t.panelControl}</p>
           </div>
-          <button className="btn btn-dark" onClick={() => { loadReservations(); loadSettings(); loadConversations(); }}>{t.update}</button>
-          <button style={{ border:'none', cursor:'pointer', padding:'7px 14px', borderRadius:7, fontSize:12, fontWeight:600, background:'#3b82f6', color:'#fff' }} onClick={() => setShowNewRes(true)}>{t.newRes}</button>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn btn-gray" onClick={() => { loadReservations(); loadSettings(); loadConversations(); }}>{t.update}</button>
+            <button style={{ border:'none', cursor:'pointer', padding:'7px 14px', borderRadius:7, fontSize:12, fontWeight:600, background:'#3b82f6', color:'#fff' }} onClick={() => setShowNewRes(true)}>{t.newRes}</button>
+          </div>
         </header>
 
         <div style={{ padding:"24px 28px" }}>
 
+          {/* OVERVIEW */}
           {tab === "overview" && (
             <div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
                 {[
-                  { label: t.reservasHoy,    value: reservations.filter(r => r.date===today).length, Icon: CalendarDays, color:"#3b82f6", bg:"#eff6ff" },
-                  { label: t.confirmed,      value: confirmedCount,      Icon: CheckCircle2, color:"#10b981", bg:"#ecfdf5" },
-                  { label: t.mesasLibres,    value: freeTables,          Icon: Grid,         color:"#16a34a", bg:"#f0fdf4" },
-                  { label: t.totalReservas,  value: reservations.length, Icon: TrendingUp,   color:"#8b5cf6", bg:"#f5f3ff" },
+                  { label: t.reservasHoy,   value: reservations.filter(r => r.date===today).length, Icon: CalendarDays, color:"#3b82f6", bg:"#eff6ff" },
+                  { label: t.confirmed,     value: confirmedCount,      Icon: CheckCircle2, color:"#10b981", bg:"#ecfdf5" },
+                  { label: t.mesasLibres,   value: freeTables,          Icon: Grid,         color:"#16a34a", bg:"#f0fdf4" },
+                  { label: t.totalReservas, value: reservations.length, Icon: TrendingUp,   color:"#8b5cf6", bg:"#f5f3ff" },
                 ].map((s, i) => (
                   <div key={i} className="stat-card">
                     <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
@@ -584,8 +665,8 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}><Users size={12} color="#9ca3af" /><span style={{ fontSize:12, color:"#6b7280" }}>{r.guests}p</span></div>
                       <span className="badge" style={{ background:S.bg, color:S.color, borderColor:S.border }}>{S.label}</span>
                       <div style={{ display:"flex", gap:6 }}>
-                        {r.status==="pending" && <button className="btn btn-green" disabled={actionLoading} onClick={() => confirmRes(r.id)}>{t.confirm}</button>}
-                        {r.status!=="cancelled" && <button className="btn btn-red" disabled={actionLoading} onClick={() => cancelRes(r.id)}>{t.cancel}</button>}
+                        {r.status==="pending" && <button className="btn btn-green" onClick={() => confirmRes(r.id)}>{t.confirm}</button>}
+                        {r.status!=="cancelled" && <button className="btn btn-red" onClick={() => cancelRes(r.id)}>{t.cancel}</button>}
                       </div>
                     </div>
                   );
@@ -594,6 +675,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* RESERVATIONS */}
           {tab === "reservations" && (
             <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
               <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -622,22 +704,59 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
               </div>
               <div className="card">
                 <div className="card-header">
-                  <span style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{filteredReservations.length} {subTab === 'active' ? t.activeRes : subTab === 'cancelled' ? t.cancelled : t.archivedRes}</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{filteredReservations.length} {subTab==='active' ? t.activeRes : subTab==='cancelled' ? t.cancelledTab : t.archivedRes}</span>
                   <div style={{ display:'flex', gap:8 }}>
-                  <div style={{display:'flex',gap:4,background:'#f3f4f6',borderRadius:8,padding:4}}>
-  <button className="btn" style={{fontSize:11,background:subTab==='active'?'#111827':'#f3f4f6',color:subTab==='active'?'#fff':'#374151',borderColor:subTab==='active'?'#111827':'#e5e7eb'}} onClick={()=>setSubTab('active')}>{t.activeRes}</button>
-  <button className="btn" style={{fontSize:11,background:subTab==='cancelled'?'#dc2626':'#f3f4f6',color:subTab==='cancelled'?'#fff':'#374151',borderColor:subTab==='cancelled'?'#dc2626':'#e5e7eb'}} onClick={()=>setSubTab('cancelled')}>{t.cancelled}</button>
-  <button className="btn" style={{fontSize:11,background:subTab==='archived'?'#111827':'#f3f4f6',color:subTab==='archived'?'#fff':'#374151',borderColor:subTab==='archived'?'#111827':'#e5e7eb'}} onClick={()=>setSubTab('archived')}>{t.archivedRes}</button>
-</div>
+                    <div style={{ display:'flex', gap:4, background:'#f3f4f6', borderRadius:8, padding:4 }}>
+                      {[['active', t.activeRes],['cancelled', t.cancelledTab],['archived', t.archivedRes]].map(([key, label]) => (
+                        <button key={key} className="btn" style={{ fontSize:11, background:subTab===key?'#111827':'transparent', color:subTab===key?'#fff':'#374151', borderColor:subTab===key?'#111827':'transparent' }} onClick={() => setSubTab(key)}>{label}</button>
+                      ))}
+                    </div>
                     <button className="btn btn-gray" style={{ fontSize:11 }} onClick={exportToExcel}>{t.exportCsv}</button>
                   </div>
                 </div>
                 {loading && <div style={{ padding:20, color:"#9ca3af" }}>...</div>}
                 {!loading && filteredReservations.length===0 && <div style={{ padding:20, color:"#9ca3af", fontSize:13 }}>{t.noRes}</div>}
-                {filteredReservations.map(r => {
+
+                {/* FORMATO TABLA PARA ARCHIVADAS */}
+                {subTab === 'archived' && filteredReservations.length > 0 && (
+                  <div style={{ overflowX:'auto', padding:'0 4px' }}>
+                    <table className="archived-table">
+                      <thead>
+                        <tr>
+                          <th>{t.name}</th>
+                          <th>{t.phone}</th>
+                          <th>Fecha</th>
+                          <th>Hora</th>
+                          <th>{t.guests}</th>
+                          <th>Estado</th>
+                          <th>{t.notes}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredReservations.map(r => {
+                          const S = STATUS[r.status] || STATUS.confirmed;
+                          return (
+                            <tr key={r.id}>
+                              <td style={{ fontWeight:600 }}>{r.customer_name}</td>
+                              <td style={{ color:"#9ca3af" }}>{r.customer_phone}</td>
+                              <td>{r.date}</td>
+                              <td style={{ fontWeight:600 }}>{r.time}</td>
+                              <td>{r.guests}p</td>
+                              <td><span className="badge" style={{ background:S.bg, color:S.color, borderColor:S.border }}>{S.label}</span></td>
+                              <td style={{ color:"#9ca3af", maxWidth:180, overflow:'hidden', textOverflow:'ellipsis' }}>{r.notes || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* FORMATO NORMAL PARA ACTIVAS Y CANCELADAS */}
+                {subTab !== 'archived' && filteredReservations.map(r => {
                   const S = STATUS[r.status] || STATUS.confirmed;
                   return (
-                    <div key={r.id} className="table-row" style={{ opacity:r.status==="cancelled"?0.5:1 }}>
+                    <div key={r.id} className="table-row" style={{ opacity:r.status==="cancelled"?0.6:1 }}>
                       <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>{r.customer_name}</div><div style={{ fontSize:11, color:"#9ca3af" }}>{r.customer_phone}</div></div>
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}><Calendar size={11} color="#9ca3af" /><span style={{ fontSize:12, color:"#6b7280" }}>{r.date}</span></div>
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}><Clock size={11} color="#9ca3af" /><span style={{ fontSize:13, fontWeight:600 }}>{r.time}</span></div>
@@ -665,6 +784,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* CALENDAR */}
           {tab === "calendar" && (
             <div>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -679,8 +799,9 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                   <button className="btn btn-gray" onClick={() => setCalDate(new Date())} style={{ fontSize:11 }}>{t.today}</button>
                 </div>
                 <div style={{ display:"flex", gap:4, background:"#f3f4f6", borderRadius:8, padding:4 }}>
-                  <button onClick={() => setCalView("week")} style={{ padding:"5px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"system-ui", background:calView==="week"?"#fff":"transparent", color:calView==="week"?"#111827":"#6b7280", boxShadow:calView==="week"?"0 1px 3px #0000000d":"none" }}>{t.week}</button>
-                  <button onClick={() => setCalView("month")} style={{ padding:"5px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"system-ui", background:calView==="month"?"#fff":"transparent", color:calView==="month"?"#111827":"#6b7280", boxShadow:calView==="month"?"0 1px 3px #0000000d":"none" }}>{t.month}</button>
+                  {[['week',t.week],['month',t.month]].map(([v,l]) => (
+                    <button key={v} onClick={() => setCalView(v)} style={{ padding:"5px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:600, fontFamily:"system-ui", background:calView===v?"#fff":"transparent", color:calView===v?"#111827":"#6b7280", boxShadow:calView===v?"0 1px 3px #0000000d":"none" }}>{l}</button>
+                  ))}
                 </div>
               </div>
               {calView==="week" && (
@@ -709,7 +830,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                         return (
                           <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid #f9fafb" }}>
                             <div style={{ fontSize:13, fontWeight:700, color:"#111827", minWidth:45 }}>{r.time}</div>
-                            <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>{r.customer_name}</div><div style={{ fontSize:11, color:"#9ca3af" }}>{r.customer_phone}</div></div>
+                            <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600 }}>{r.customer_name}</div><div style={{ fontSize:11, color:"#9ca3af" }}>{r.customer_phone}</div></div>
                             <div style={{ fontSize:12, color:"#6b7280" }}>{r.guests}p</div>
                             <span className="badge" style={{ background:S.bg, color:S.color, borderColor:S.border }}>{S.label}</span>
                           </div>
@@ -750,7 +871,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                         return (
                           <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:"1px solid #f9fafb" }}>
                             <div style={{ fontSize:13, fontWeight:700, color:"#111827", minWidth:45 }}>{r.time}</div>
-                            <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600, color:"#111827" }}>{r.customer_name}</div><div style={{ fontSize:11, color:"#9ca3af" }}>{r.customer_phone}</div></div>
+                            <div style={{ flex:1 }}><div style={{ fontSize:13, fontWeight:600 }}>{r.customer_name}</div><div style={{ fontSize:11, color:"#9ca3af" }}>{r.customer_phone}</div></div>
                             <div style={{ fontSize:12, color:"#6b7280" }}>{r.guests}p</div>
                             <span className="badge" style={{ background:S.bg, color:S.color, borderColor:S.border }}>{S.label}</span>
                           </div>
@@ -763,6 +884,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* TABLES */}
           {tab === "tables" && (
             <div>
               <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
@@ -778,7 +900,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                   </div>
                 ))}
                 <div style={{ marginLeft:"auto", fontSize:12, color:"#9ca3af", alignSelf:"center" }}>
-                  {tables.filter(tb=>getTableStatus(tb).label===t.free).length} {t.free.toLowerCase()} · {tables.length} total
+                  {freeTables} {t.free.toLowerCase()} · {tables.length} total
                 </div>
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
@@ -811,6 +933,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* STATS */}
           {tab === "stats" && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
@@ -874,6 +997,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* WHATSAPP */}
           {tab === "whatsapp" && (
             <div className="card">
               <div className="card-header">
@@ -893,6 +1017,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* CONVERSATIONS */}
           {tab === "conversations" && (
             <div style={{ display:"flex", gap:16, height:"calc(100vh - 140px)" }}>
               <div className="card" style={{ width:280, flexShrink:0, overflowY:"auto" }}>
@@ -950,7 +1075,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                           <div style={{ fontSize:11, color:"#9ca3af" }}>{selectedConv}</div>
                         </div>
                         {clientRes.length>0 && (
-                          <div style={{ display:"flex", gap:6 }}>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                             {clientRes.map(r=>(
                               <span key={r.id} className="badge" style={{ background:STATUS[r.status]?.bg, color:STATUS[r.status]?.color, borderColor:STATUS[r.status]?.border }}>
                                 {r.date} · {r.time} · {r.guests}p
@@ -977,9 +1102,12 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
           )}
 
+          {/* SETTINGS */}
           {tab === "settings" && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
               {saveMsg && <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"10px 16px", color:"#15803d", fontSize:13, fontWeight:600 }}>{saveMsg}</div>}
+
+              {/* Datos restaurante */}
               <div className="card">
                 <div className="card-header">
                   <span style={{ fontSize:13, fontWeight:600 }}>{t.restData}</span>
@@ -1006,7 +1134,61 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
                     }
                   </div>
                 ))}
+
+                {/* Días de apertura */}
+                <div style={{ padding:"16px 20px", borderTop:"1px solid #f3f4f6" }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginBottom:12 }}>{t.openDays}</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {WEEKDAYS_CONFIG.map(({ key, es, ca }) => {
+                      const isOn = openDays.includes(key);
+                      return (
+                        <div key={key} className={"day-chip " + (isOn ? "on" : "off")} onClick={() => { if (editingRestaurant) toggleOpenDay(key); }}
+                          style={{ opacity: editingRestaurant ? 1 : 0.7, cursor: editingRestaurant ? 'pointer' : 'default' }}>
+                          {lang === 'ca' ? ca : es}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {!editingRestaurant && <div style={{ fontSize:11, color:"#9ca3af", marginTop:8 }}>Pulsa "Editar" para cambiar los días</div>}
+                </div>
+
+                {/* Turnos */}
+                <div style={{ padding:"16px 20px", borderTop:"1px solid #f3f4f6" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#374151" }}>{t.shifts}</div>
+                    {editingRestaurant && (
+                      <button className="btn btn-dark" style={{ fontSize:11 }} onClick={() => setAddingShift(!addingShift)}>
+                        <Plus size={12} style={{marginRight:4}}/>{t.addShift}
+                      </button>
+                    )}
+                  </div>
+                  {addingShift && editingRestaurant && (
+                    <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap", background:"#f9fafb", padding:12, borderRadius:8 }}>
+                      <input placeholder={t.shiftName} value={newShift.name} onChange={e=>setNewShift(s=>({...s,name:e.target.value}))}
+                        style={{ flex:1, minWidth:120, padding:"6px 10px", border:"1px solid #e5e7eb", borderRadius:7, fontSize:13, fontFamily:"system-ui" }}/>
+                      <input type="time" value={newShift.start} onChange={e=>setNewShift(s=>({...s,start:e.target.value}))}
+                        style={{ width:110, padding:"6px 10px", border:"1px solid #e5e7eb", borderRadius:7, fontSize:13, fontFamily:"system-ui" }}/>
+                      <input type="time" value={newShift.end} onChange={e=>setNewShift(s=>({...s,end:e.target.value}))}
+                        style={{ width:110, padding:"6px 10px", border:"1px solid #e5e7eb", borderRadius:7, fontSize:13, fontFamily:"system-ui" }}/>
+                      <button className="btn btn-gray" onClick={()=>setAddingShift(false)}><X size={12}/></button>
+                      <button className="btn btn-dark" onClick={addShift}><Save size={12} style={{marginRight:4}}/>{t.save}</button>
+                    </div>
+                  )}
+                  {shifts.length === 0 && <div style={{ fontSize:12, color:"#9ca3af" }}>{t.noShifts}</div>}
+                  {shifts.map(shift => (
+                    <div key={shift.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:"1px solid #f9fafb" }}>
+                      <div style={{ width:8, height:8, borderRadius:"50%", background:"#6b7280" }}/>
+                      <span style={{ fontSize:13, fontWeight:600, color:"#111827", flex:1 }}>{shift.name}</span>
+                      <span style={{ fontSize:12, color:"#6b7280" }}>{shift.start} – {shift.end}</span>
+                      {editingRestaurant && (
+                        <button className="btn btn-red" style={{ padding:"3px 8px" }} onClick={()=>deleteShift(shift.id)}><Trash2 size={12}/></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {/* Mesas */}
               <div className="card">
                 <div className="card-header">
                   <span style={{ fontSize:13, fontWeight:600 }}>{t.tablesTitle} ({tables.length})</span>
@@ -1055,6 +1237,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
         </div>
       </main>
 
+      {/* Modal nueva reserva */}
       {showNewRes && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ background:'#fff', borderRadius:16, padding:32, width:440, maxWidth:'95vw', boxShadow:'0 20px 60px #00000030' }}>
@@ -1074,7 +1257,7 @@ else if (subTab === 'archived') { if (!isPast || isCancelled) return false; }
             </div>
             <div style={{ display:'flex', gap:10, marginTop:24, justifyContent:'flex-end' }}>
               <button className="btn btn-gray" onClick={()=>setShowNewRes(false)}>{t.cancel}</button>
-              <button style={{ border:'none', cursor:'pointer', padding:'7px 16px', borderRadius:7, fontSize:13, fontWeight:600, background:'#3b82f6', color:'#fff', opacity:actionLoading?0.6:1 }} disabled={actionLoading} onClick={createManualReservation}>{actionLoading?t.creating:t.create}</button>
+              <button style={{ border:'none', cursor:'pointer', padding:'7px 16px', borderRadius:7, fontSize:13, fontWeight:600, background:'#3b82f6', color:'#fff' }} onClick={createManualReservation}>{t.create}</button>
             </div>
           </div>
         </div>
