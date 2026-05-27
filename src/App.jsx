@@ -212,13 +212,21 @@ export default function App() {
     return()=>{supabase.removeChannel(resChannel);supabase.removeChannel(convChannel);};
   },[loggedIn]);
 
-  function toggleManualMode(phone){
-    setManualModePhones(prev=>{
-      const next=new Set(prev);
-      if(next.has(phone))next.delete(phone);else next.add(phone);
+  async function toggleManualMode(phone) {
+    const newActive = !manualModePhones.has(phone);
+    setManualModePhones(prev => {
+      const next = new Set(prev);
+      if(next.has(phone)) next.delete(phone); else next.add(phone);
       try{localStorage.setItem('manualModePhones',JSON.stringify([...next]));}catch{}
       return next;
     });
+    try {
+      await fetch('https://reservas-bot-production-db9b.up.railway.app/set-manual-mode', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ phone, restaurantId: RESTAURANT_ID, active: newActive })
+      });
+    } catch(e) { console.error('Error setting manual mode:', e); }
   }
 
   async function sendManualReply(phone,name){
