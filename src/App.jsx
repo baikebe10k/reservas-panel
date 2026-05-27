@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
@@ -983,42 +984,115 @@ return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRat
                 <button className="btn btn-dark" onClick={() => {
                const doc = new jsPDF();
                const fecha = new Date().toLocaleDateString('es-ES');
-               let y = 20;
-               doc.setFontSize(18); doc.setFont('helvetica','bold');
-               doc.text('Informe de Estadísticas', 105, y, {align:'center'}); y += 8;
+               const nombreRest = restaurant?.name || 'Restaurante';
+               
+               // Header
+               doc.setFillColor(17, 24, 39);
+               doc.rect(0, 0, 210, 32, 'F');
+               doc.setFontSize(20); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255);
+               doc.text('ReservIA', 14, 14);
                doc.setFontSize(10); doc.setFont('helvetica','normal');
-               doc.text(`${restaurant?.name || 'Restaurante'} — Generado el ${fecha}`, 105, y, {align:'center'}); y += 14;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Resumen general', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               doc.text(`Total confirmadas: ${stats.totalConfirmed}`, 14, y); y += 6;
-               doc.text(`Total comensales: ${stats.totalGuests}`, 14, y); y += 6;
-               doc.text(`Tasa cancelación: ${stats.cancellationRate}%`, 14, y); y += 6;
-               doc.text(`Anticipación media: ${stats.avgAnticipation} días`, 14, y); y += 6;
-               doc.text(`Tamaño medio grupo: ${stats.avgGroupSize} personas`, 14, y); y += 6;
-               doc.text(`Clientes recurrentes: ${stats.recurringClients}`, 14, y); y += 6;
-               doc.text(`Clientes nuevos: ${stats.newClients}`, 14, y); y += 12;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Reservas últimos 7 días', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               stats.last7.forEach(d => { doc.text(`  ${d.day}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Por día de semana', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               stats.byWeekday.forEach(d => { doc.text(`  ${d.dia}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Canal de reserva', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               stats.byChannel.forEach(d => { doc.text(`  ${d.canal}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Horas pico', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               stats.horasPico.forEach(d => { doc.text(`  ${d.hora}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
-               doc.setFontSize(13); doc.setFont('helvetica','bold');
-               doc.text('Mesas más reservadas', 14, y); y += 8;
-               doc.setFontSize(11); doc.setFont('helvetica','normal');
-               stats.ocupacionMesas.forEach(d => { doc.text(`  ${d.mesa}: ${d.reservas} reservas`, 14, y); y += 6; });
-               doc.save(`estadisticas_${fecha.replace(/\//g,'-')}.pdf`);  
+               doc.text('Informe de Estadísticas', 14, 22);
+               doc.setFontSize(9);
+               doc.text(`${nombreRest}  ·  Generado el ${fecha}`, 196, 22, {align:'right'});
+               
+               // KPIs
+               doc.setTextColor(17,24,39);
+               doc.setFontSize(11); doc.setFont('helvetica','bold');
+               doc.text('Resumen general', 14, 44);
+               
+               autoTable(doc, {
+                 startY: 48,
+                 theme: 'grid',
+                 headStyles: { fillColor: [17,24,39], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+                 bodyStyles: { fontSize: 10 },
+                 alternateRowStyles: { fillColor: [249,250,251] },
+                 columns: [{ header: 'Métrica', dataKey: 'metrica' }, { header: 'Valor', dataKey: 'valor' }],
+                 body: [
+                   { metrica: 'Total confirmadas',     valor: stats.totalConfirmed },
+                   { metrica: 'Total comensales',      valor: stats.totalGuests },
+                   { metrica: 'Tasa de cancelación',   valor: stats.cancellationRate + '%' },
+                   { metrica: 'Anticipación media',    valor: stats.avgAnticipation + ' días' },
+                   { metrica: 'Tamaño medio de grupo', valor: stats.avgGroupSize + ' personas' },
+                   { metrica: 'Clientes recurrentes',  valor: stats.recurringClients },
+                   { metrica: 'Clientes nuevos',       valor: stats.newClients },
+                 ],
+                 columnStyles: { valor: { halign: 'right', fontStyle: 'bold' } },
+                 margin: { left: 14, right: 14 },
+               });
+               
+               // Canal de reserva
+               doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(17,24,39);
+               doc.text('Canal de reserva', 14, doc.lastAutoTable.finalY + 12);
+               autoTable(doc, {
+                 startY: doc.lastAutoTable.finalY + 16,
+                 theme: 'grid',
+                 headStyles: { fillColor: [16,185,129], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+                 bodyStyles: { fontSize: 10 },
+                 alternateRowStyles: { fillColor: [249,250,251] },
+                 columns: [{ header: 'Canal', dataKey: 'canal' }, { header: 'Reservas', dataKey: 'reservas' }],
+                 body: stats.byChannel,
+                 columnStyles: { reservas: { halign: 'right', fontStyle: 'bold' } },
+                 margin: { left: 14, right: 14 },
+               });
+               
+               // Por día de semana
+               doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(17,24,39);
+               doc.text('Reservas por día de semana', 14, doc.lastAutoTable.finalY + 12);
+               autoTable(doc, {
+                 startY: doc.lastAutoTable.finalY + 16,
+                 theme: 'grid',
+                 headStyles: { fillColor: [245,158,11], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+                 bodyStyles: { fontSize: 10 },
+                 alternateRowStyles: { fillColor: [249,250,251] },
+                 columns: [{ header: 'Día', dataKey: 'dia' }, { header: 'Reservas', dataKey: 'reservas' }],
+                 body: stats.byWeekday,
+                 columnStyles: { reservas: { halign: 'right', fontStyle: 'bold' } },
+                 margin: { left: 14, right: 14 },
+               });
+               
+               // Horas pico
+               doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(17,24,39);
+               doc.text('Horas pico', 14, doc.lastAutoTable.finalY + 12);
+               autoTable(doc, {
+                 startY: doc.lastAutoTable.finalY + 16,
+                 theme: 'grid',
+                 headStyles: { fillColor: [59,130,246], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+                 bodyStyles: { fontSize: 10 },
+                 alternateRowStyles: { fillColor: [249,250,251] },
+                 columns: [{ header: 'Hora', dataKey: 'hora' }, { header: 'Reservas', dataKey: 'reservas' }],
+                 body: stats.horasPico,
+                 columnStyles: { reservas: { halign: 'right', fontStyle: 'bold' } },
+                 margin: { left: 14, right: 14 },
+               });
+               
+               // Mesas más reservadas
+               doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(17,24,39);
+               doc.text('Mesas más reservadas', 14, doc.lastAutoTable.finalY + 12);
+               autoTable(doc, {
+                 startY: doc.lastAutoTable.finalY + 16,
+                 theme: 'grid',
+                 headStyles: { fillColor: [139,92,246], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+                 bodyStyles: { fontSize: 10 },
+                 alternateRowStyles: { fillColor: [249,250,251] },
+                 columns: [{ header: 'Mesa', dataKey: 'mesa' }, { header: 'Reservas', dataKey: 'reservas' }],
+                 body: stats.ocupacionMesas,
+                 columnStyles: { reservas: { halign: 'right', fontStyle: 'bold' } },
+                 margin: { left: 14, right: 14 },
+               });
+               
+               // Footer
+               const pageCount = doc.internal.getNumberOfPages();
+               for (let i = 1; i <= pageCount; i++) {
+                 doc.setPage(i);
+                 doc.setFillColor(17,24,39);
+                 doc.rect(0, 285, 210, 12, 'F');
+                 doc.setFontSize(8); doc.setTextColor(255,255,255); doc.setFont('helvetica','normal');
+                 doc.text(`ReservIA · ${nombreRest}`, 14, 292);
+                 doc.text(`Página ${i} de ${pageCount}`, 196, 292, {align:'right'});
+               }
+               
+               doc.save(`estadisticas_${nombreRest}_${fecha.replace(/\//g,'-')}.pdf`); 
                 }}>📄 {t.exportPdf}</button>
               </div>
               <div id="stats-content">
