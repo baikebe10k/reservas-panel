@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import jsPDF from 'jspdf';
 import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import {
@@ -980,11 +981,44 @@ return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRat
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
               <div style={{ display:"flex", justifyContent:"flex-end" }}>
                 <button className="btn btn-dark" onClick={() => {
-                  const style = document.createElement('style');
-                  style.innerHTML = `@media print { body * { visibility:hidden; } #stats-content, #stats-content * { visibility:visible; } #stats-content { position:absolute; left:0; top:0; width:100%; } }`;
-                  document.head.appendChild(style);
-                  window.print();
-                  document.head.removeChild(style);
+               const doc = new jsPDF();
+               const fecha = new Date().toLocaleDateString('es-ES');
+               let y = 20;
+               doc.setFontSize(18); doc.setFont('helvetica','bold');
+               doc.text('Informe de Estadísticas', 105, y, {align:'center'}); y += 8;
+               doc.setFontSize(10); doc.setFont('helvetica','normal');
+               doc.text(`${restaurant?.name || 'Restaurante'} — Generado el ${fecha}`, 105, y, {align:'center'}); y += 14;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Resumen general', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               doc.text(`Total confirmadas: ${stats.totalConfirmed}`, 14, y); y += 6;
+               doc.text(`Total comensales: ${stats.totalGuests}`, 14, y); y += 6;
+               doc.text(`Tasa cancelación: ${stats.cancellationRate}%`, 14, y); y += 6;
+               doc.text(`Anticipación media: ${stats.avgAnticipation} días`, 14, y); y += 6;
+               doc.text(`Tamaño medio grupo: ${stats.avgGroupSize} personas`, 14, y); y += 6;
+               doc.text(`Clientes recurrentes: ${stats.recurringClients}`, 14, y); y += 6;
+               doc.text(`Clientes nuevos: ${stats.newClients}`, 14, y); y += 12;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Reservas últimos 7 días', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               stats.last7.forEach(d => { doc.text(`  ${d.day}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Por día de semana', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               stats.byWeekday.forEach(d => { doc.text(`  ${d.dia}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Canal de reserva', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               stats.byChannel.forEach(d => { doc.text(`  ${d.canal}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Horas pico', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               stats.horasPico.forEach(d => { doc.text(`  ${d.hora}: ${d.reservas} reservas`, 14, y); y += 6; }); y += 6;
+               doc.setFontSize(13); doc.setFont('helvetica','bold');
+               doc.text('Mesas más reservadas', 14, y); y += 8;
+               doc.setFontSize(11); doc.setFont('helvetica','normal');
+               stats.ocupacionMesas.forEach(d => { doc.text(`  ${d.mesa}: ${d.reservas} reservas`, 14, y); y += 6; });
+               doc.save(`estadisticas_${fecha.replace(/\//g,'-')}.pdf`);  
                 }}>📄 {t.exportPdf}</button>
               </div>
               <div id="stats-content">
