@@ -52,7 +52,11 @@ const TRANSLATIONS = {
     shiftName: "Nombre turno (ej: Comida)", shiftStart: "Inicio", shiftEnd: "Fin",
     deleteShift: "¿Eliminar este turno?", noShifts: "Sin turnos — se usa horario general",
     cancelledTab: "Canceladas",
-  },
+    exportPdf: "⬇ Exportar PDF",
+    avgAnticipation: "Anticipación media", avgGroupSize: "Tamaño medio grupo",
+    recurringClients: "Clientes recurrentes", newClients: "Clientes nuevos",
+    byWeekday: "Reservas por día semana", byChannel: "Canal de reserva",
+    botChannel: "Bot WhatsApp", manualChannel: "Manual",},
   ca: {
     overview: "Resum", reservations: "Reserves", calendar: "Calendari",
     tables: "Taules", stats: "Estadístiques", whatsapp: "WhatsApp",
@@ -90,7 +94,11 @@ const TRANSLATIONS = {
     shiftName: "Nom torn (ex: Dinar)", shiftStart: "Inici", shiftEnd: "Fi",
     deleteShift: "Eliminar aquest torn?", noShifts: "Sense torns — s'usa horari general",
     cancelledTab: "Cancel·lades",
-  }
+    exportPdf: "⬇ Exportar PDF",
+    avgAnticipation: "Anticipació mitjana", avgGroupSize: "Mida mitjana grup",
+    recurringClients: "Clients recurrents", newClients: "Clients nous",
+    byWeekday: "Reserves per dia setmana", byChannel: "Canal de reserva",
+    botChannel: "Bot WhatsApp", manualChannel: "Manual",}
 };
 
 const STATUS_LABELS = (t) => ({
@@ -438,7 +446,36 @@ export default function App() {
     confirmed.forEach(r => { const mesa = tables.find(tb => tb.id === r.table_id); const label = mesa?.label || 'Desconocida'; mesaCount[label] = (mesaCount[label] || 0) + 1; });
     const ocupacionMesas = Object.entries(mesaCount).map(([mesa, reservas]) => ({ mesa, reservas })).sort((a, b) => b.reservas - a.reservas).slice(0, 8);
     const pieData = [{ name: t.confirmed, value: confirmed.length, color: '#16a34a' }, { name: t.cancelled, value: cancelled.length, color: '#dc2626' }];
-    return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRate, totalConfirmed: confirmed.length };
+   // Anticipación media
+const anticipations = confirmed.filter(r => r.created_at && r.date).map(r => {
+  const created = new Date(r.created_at);
+  const resDate = new Date(r.date + 'T12:00:00');
+  return Math.max(0, Math.round((resDate - created) / (1000*60*60*24)));
+});
+const avgAnticipation = anticipations.length > 0 ? Math.round(anticipations.reduce((a,b) => a+b, 0) / anticipations.length) : 0;
+
+// Tamaño medio de grupo
+const avgGroupSize = confirmed.length > 0 ? (confirmed.reduce((sum,r) => sum + (r.guests||0), 0) / confirmed.length).toFixed(1) : 0;
+
+// Clientes recurrentes vs nuevos
+const phoneCount = {};
+confirmed.forEach(r => { phoneCount[r.customer_phone] = (phoneCount[r.customer_phone]||0) + 1; });
+const recurringClients = Object.values(phoneCount).filter(c => c > 1).length;
+const newClients = Object.values(phoneCount).filter(c => c === 1).length;
+const clientPieData = [{ name: t.recurringClients, value: recurringClients, color: '#3b82f6' }, { name: t.newClients, value: newClients, color: '#8b5cf6' }];
+
+// Por día de semana
+const weekdayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const weekdayCount = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+confirmed.forEach(r => { if(r.date) { const d = new Date(r.date+'T12:00:00'); weekdayCount[d.getDay()]++; } });
+const byWeekday = Object.entries(weekdayCount).map(([day, reservas]) => ({ dia: weekdayNames[day], reservas }));
+
+// Por canal
+const botCount = reservations.filter(r => r.status==='confirmed' && r.source !== 'manual').length;
+const manualCount = reservations.filter(r => r.status==='confirmed' && r.source === 'manual').length;
+const byChannel = [{ canal: t.botChannel, reservas: botCount }, { canal: t.manualChannel, reservas: manualCount }];
+
+return { last7, horasPico, ocupacionMesas, pieData, totalGuests, cancellationRate, totalConfirmed: confirmed.length, avgAnticipation, avgGroupSize, recurringClients, newClients, clientPieData, byWeekday, byChannel };
   }, [reservations, tables, t]);
 
   function getWeekDays(date) {
@@ -941,67 +978,127 @@ export default function App() {
           {/* STATS */}
           {tab === "stats" && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-                {[
-                  { label:t.totalConfirmed, value:stats.totalConfirmed, color:"#16a34a" },
-                  { label:t.totalGuests,    value:stats.totalGuests,    color:"#3b82f6" },
-                  { label:t.cancellationRate, value:stats.cancellationRate+"%", color:"#dc2626" },
-                ].map((s,i) => (
-                  <div key={i} className="stat-card" style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:36, fontWeight:800, color:s.color }}>{s.value}</div>
-                    <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>{s.label}</div>
-                  </div>
-                ))}
+              <div style={{ display:"flex", justifyContent:"flex-end" }}>
+                <button className="btn btn-dark" onClick={() => {
+                  const style = document.createElement('style');
+                  style.innerHTML = `@media print { body * { visibility:hidden; } #stats-content, #stats-content * { visibility:visible; } #stats-content { position:absolute; left:0; top:0; width:100%; } }`;
+                  document.head.appendChild(style);
+                  window.print();
+                  document.head.removeChild(style);
+                }}>📄 {t.exportPdf}</button>
               </div>
-              <div className="card">
-                <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.last7}</span></div>
-                <div style={{ padding:20 }}>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={stats.last7}><XAxis dataKey="day" tick={{fontSize:12}}/><YAxis tick={{fontSize:12}}/><Tooltip/><Bar dataKey="reservas" fill="#111827" radius={[4,4,0,0]}/></BarChart>
-                  </ResponsiveContainer>
+              <div id="stats-content">
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+                  {[
+                    { label:t.totalConfirmed, value:stats.totalConfirmed, color:"#16a34a" },
+                    { label:t.totalGuests,    value:stats.totalGuests,    color:"#3b82f6" },
+                    { label:t.cancellationRate, value:stats.cancellationRate+"%", color:"#dc2626" },
+                  ].map((s,i) => (
+                    <div key={i} className="stat-card" style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:36, fontWeight:800, color:s.color }}>{s.value}</div>
+                      <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-                <div className="card">
-                  <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.peakHours}</span></div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+                  {[
+                    { label:t.avgAnticipation, value:stats.avgAnticipation+" días", color:"#f59e0b" },
+                    { label:t.avgGroupSize,    value:stats.avgGroupSize+" p",       color:"#6b7280" },
+                    { label:t.recurringClients,value:stats.recurringClients,        color:"#3b82f6" },
+                  ].map((s,i) => (
+                    <div key={i} className="stat-card" style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:36, fontWeight:800, color:s.color }}>{s.value}</div>
+                      <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="card" style={{ marginBottom:16 }}>
+                  <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.last7}</span></div>
                   <div style={{ padding:20 }}>
                     <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={stats.horasPico}><XAxis dataKey="hora" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Bar dataKey="reservas" fill="#3b82f6" radius={[4,4,0,0]}/></BarChart>
+                      <BarChart data={stats.last7}><XAxis dataKey="day" tick={{fontSize:12}}/><YAxis tick={{fontSize:12}}/><Tooltip/><Bar dataKey="reservas" fill="#111827" radius={[4,4,0,0]}/></BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="card">
-                  <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.resStatus}</span></div>
-                  <div style={{ padding:20, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    <PieChart width={200} height={200}>
-                      <Pie data={stats.pieData} cx={100} cy={100} innerRadius={60} outerRadius={90} dataKey="value">
-                        {stats.pieData.map((entry,index)=><Cell key={index} fill={entry.color}/>)}
-                      </Pie><Tooltip/>
-                    </PieChart>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.byWeekday}</span></div>
+                    <div style={{ padding:20 }}>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={stats.byWeekday}><XAxis dataKey="dia" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Bar dataKey="reservas" fill="#f59e0b" radius={[4,4,0,0]}/></BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
-                  <div style={{ padding:"0 20px 16px", display:"flex", gap:16, justifyContent:"center" }}>
-                    {stats.pieData.map((d,i)=>(
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                        <div style={{ width:10, height:10, borderRadius:"50%", background:d.color }}/>
-                        <span style={{ fontSize:12, color:"#6b7280" }}>{d.name}: {d.value}</span>
-                      </div>
-                    ))}
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.byChannel}</span></div>
+                    <div style={{ padding:20 }}>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={stats.byChannel}><XAxis dataKey="canal" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Bar dataKey="reservas" fill="#10b981" radius={[4,4,0,0]}/></BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="card">
-                <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.topTables}</span></div>
-                <div style={{ padding:20 }}>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={stats.ocupacionMesas} layout="vertical">
-                      <XAxis type="number" tick={{fontSize:11}}/><YAxis dataKey="mesa" type="category" tick={{fontSize:11}} width={70}/><Tooltip/><Bar dataKey="reservas" fill="#8b5cf6" radius={[0,4,4,0]}/>
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.peakHours}</span></div>
+                    <div style={{ padding:20 }}>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={stats.horasPico}><XAxis dataKey="hora" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip/><Bar dataKey="reservas" fill="#3b82f6" radius={[4,4,0,0]}/></BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.resStatus}</span></div>
+                    <div style={{ padding:20, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <PieChart width={200} height={200}>
+                        <Pie data={stats.pieData} cx={100} cy={100} innerRadius={60} outerRadius={90} dataKey="value">
+                          {stats.pieData.map((entry,index)=><Cell key={index} fill={entry.color}/>)}
+                        </Pie><Tooltip/>
+                      </PieChart>
+                    </div>
+                    <div style={{ padding:"0 20px 16px", display:"flex", gap:16, justifyContent:"center" }}>
+                      {stats.pieData.map((d,i)=>(
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:10, height:10, borderRadius:"50%", background:d.color }}/>
+                          <span style={{ fontSize:12, color:"#6b7280" }}>{d.name}: {d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.recurringClients} vs {t.newClients}</span></div>
+                    <div style={{ padding:20, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <PieChart width={200} height={200}>
+                        <Pie data={stats.clientPieData} cx={100} cy={100} innerRadius={60} outerRadius={90} dataKey="value">
+                          {stats.clientPieData.map((entry,index)=><Cell key={index} fill={entry.color}/>)}
+                        </Pie><Tooltip/>
+                      </PieChart>
+                    </div>
+                    <div style={{ padding:"0 20px 16px", display:"flex", gap:16, justifyContent:"center" }}>
+                      {stats.clientPieData.map((d,i)=>(
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:10, height:10, borderRadius:"50%", background:d.color }}/>
+                          <span style={{ fontSize:12, color:"#6b7280" }}>{d.name}: {d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="card-header"><span style={{ fontSize:13, fontWeight:600 }}>{t.topTables}</span></div>
+                    <div style={{ padding:20 }}>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={stats.ocupacionMesas} layout="vertical">
+                          <XAxis type="number" tick={{fontSize:11}}/><YAxis dataKey="mesa" type="category" tick={{fontSize:11}} width={70}/><Tooltip/><Bar dataKey="reservas" fill="#8b5cf6" radius={[0,4,4,0]}/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-
           {/* WHATSAPP */}
           {tab === "whatsapp" && (
             <div className="card">
