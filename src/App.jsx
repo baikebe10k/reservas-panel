@@ -987,7 +987,56 @@ headers: {
               </div>
             </div>
           )}
-
+{/* MESAS ADAPTATIVAS */}
+<div className="card">
+               <div className="card-header">
+                 <span style={{fontSize:13,fontWeight:600}}>⚙️ Configuración adaptativa de mesas</span>
+               </div>
+               {tables.map(tb=>(
+                 <div key={tb.id} style={{padding:'14px 20px',borderBottom:'1px solid #f3f4f6'}}>
+                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                     <div style={{display:'flex',alignItems:'center',gap:8}}>
+                       <Utensils size={14} color="#6b7280"/>
+                       <span style={{fontSize:13,fontWeight:700,color:'#111827'}}>{tb.label}</span>
+                       <span style={{fontSize:11,color:'#9ca3af'}}>{tb.capacity}p base</span>
+                     </div>
+                     <button className="btn btn-dark" style={{fontSize:11}} onClick={async()=>{
+                       const maxCap=parseInt(document.getElementById(`max_${tb.id}`)?.value||tb.capacity);
+                       const zone=document.getElementById(`zone_${tb.id}`)?.value||'General';
+                       const isGroup=document.getElementById(`group_${tb.id}`)?.checked||false;
+                       const notes=document.getElementById(`notes_${tb.id}`)?.value||'';
+                       await supabase.from('tables').update({max_capacity:maxCap,zone:zone,is_group_table:isGroup,notes:notes}).eq('id',tb.id);
+                       await loadSettings();
+                       showToast('✓ Mesa actualizada');
+                     }}><Save size={11} style={{marginRight:4}}/>Guardar</button>
+                   </div>
+                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                     <div>
+                       <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>Capacidad máxima</div>
+                       <input id={`max_${tb.id}`} type="number" defaultValue={tb.max_capacity||tb.capacity} min={tb.capacity} style={{width:'100%',padding:'6px 10px',border:'1px solid #e5e7eb',borderRadius:7,fontSize:13,fontFamily:'system-ui'}}/>
+                       <div style={{fontSize:10,color:'#9ca3af',marginTop:2}}>Con adaptación</div>
+                     </div>
+                     <div>
+                       <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>Zona</div>
+                       <input id={`zone_${tb.id}`} defaultValue={tb.zone||'General'} placeholder="Interior, Terraza..." style={{width:'100%',padding:'6px 10px',border:'1px solid #e5e7eb',borderRadius:7,fontSize:13,fontFamily:'system-ui'}}/>
+                     </div>
+                     <div>
+                       <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>Notas</div>
+                       <input id={`notes_${tb.id}`} defaultValue={tb.notes||''} placeholder="Vista mar, VIP..." style={{width:'100%',padding:'6px 10px',border:'1px solid #e5e7eb',borderRadius:7,fontSize:13,fontFamily:'system-ui'}}/>
+                     </div>
+                   </div>
+                   <div style={{marginTop:10,display:'flex',alignItems:'center',gap:8}}>
+                     <input id={`group_${tb.id}`} type="checkbox" defaultChecked={tb.is_group_table||false}/>
+                     <label style={{fontSize:12,color:'#374151',cursor:'pointer'}}>Mesa apta para grupos (se puede combinar con otras)</label>
+                   </div>
+                   {tb.is_group_table&&(
+                     <div style={{marginTop:8,fontSize:11,color:'#6b7280',background:'#f9fafb',padding:'8px 10px',borderRadius:6}}>
+                       Mesas combinables: {tables.filter(t=>t.id!==tb.id&&t.is_group_table).map(t=>t.label).join(', ')||'Ninguna aún — activa otras mesas como "apta para grupos"'}
+                     </div>
+                   )}
+                 </div>
+               ))}
+             </div>
         </div>
       </main>
 
