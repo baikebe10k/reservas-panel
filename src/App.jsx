@@ -1035,28 +1035,13 @@ export default function App() {
                             <input id={`zone_${tb.id}`} defaultValue={tb.zone||'General'} placeholder="Interior, Terraza..." style={{width:110,padding:'5px 8px',border:'1px solid #e5e7eb',borderRadius:6,fontSize:12,fontFamily:'system-ui'}}/>
                           </td>
                           <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`flex_${tb.id}`} type="checkbox" defaultChecked={tb.is_flexible||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_flexible?'#16a34a':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_flexible?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
+                            <ToggleSwitch id={`flex_${tb.id}`} defaultChecked={tb.is_flexible||false} color="#16a34a"/>
                           </td>
                           <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`group_${tb.id}`} type="checkbox" defaultChecked={tb.is_group_table||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_group_table?'#8b5cf6':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_group_table?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
+                            <ToggleSwitch id={`group_${tb.id}`} defaultChecked={tb.is_group_table||false} color="#8b5cf6"/>
                           </td>
                           <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`vip_${tb.id}`} type="checkbox" defaultChecked={tb.is_vip||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_vip?'#f59e0b':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_vip?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
+                            <ToggleSwitch id={`vip_${tb.id}`} defaultChecked={tb.is_vip||false} color="#f59e0b"/>
                           </td>
                         </tr>
                       ))}
