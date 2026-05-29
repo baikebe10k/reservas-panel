@@ -293,6 +293,7 @@ export default function App() {
   const [replyText,setReplyText] = useState('');
 
   const [sendingReply,setSendingReply] = useState(false);
+  const [advancedConfig,setAdvancedConfig] = useState({flexEnabled:false,groupMin:8,autoCombine:true,autoConfirmGroups:false,extra2:1,extra4:2,extra6:2,extra8:4});
 
   const [advancedConfig,setAdvancedConfig] = useState({flexEnabled:false,groupMin:8,autoCombine:true,autoConfirmGroups:false,extra2:1,extra4:2,extra6:2,extra8:4});
 
