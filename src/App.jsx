@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -213,13 +212,21 @@ export default function App() {
     return()=>{supabase.removeChannel(resChannel);supabase.removeChannel(convChannel);};
   },[loggedIn]);
 
-  function toggleManualMode(phone){
-    setManualModePhones(prev=>{
-      const next=new Set(prev);
-      if(next.has(phone))next.delete(phone);else next.add(phone);
+  async function toggleManualMode(phone) {
+    const newActive = !manualModePhones.has(phone);
+    setManualModePhones(prev => {
+      const next = new Set(prev);
+      if(next.has(phone)) next.delete(phone); else next.add(phone);
       try{localStorage.setItem('manualModePhones',JSON.stringify([...next]));}catch{}
       return next;
     });
+    try {
+      await fetch('https://reservas-bot-production-db9b.up.railway.app/set-manual-mode', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'x-panel-token': import.meta.env.VITE_PANEL_TOKEN || 'reservia_panel_2026_xK9mP3'},
+        body: JSON.stringify({ phone, restaurantId: RESTAURANT_ID, active: newActive })
+      });
+    } catch(e) { console.error('Error setting manual mode:', e); }
   }
 
   async function sendManualReply(phone,name){
@@ -227,7 +234,11 @@ export default function App() {
     setSendingReply(true);
     try{
       await fetch('https://reservas-bot-production-db9b.up.railway.app/send-message',{
-        method:'POST',headers:{'Content-Type':'application/json'},
+        method: 'POST',
+headers: {
+  'Content-Type': 'application/json',
+  'x-panel-token': import.meta.env.VITE_PANEL_TOKEN || 'reservia_panel_2026_xK9mP3'
+},
         body:JSON.stringify({phone,message:replyText,restaurantId:RESTAURANT_ID})
       });
       await supabase.from('conversations').insert([{
@@ -974,97 +985,6 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
-              {/* MESAS ADAPTATIVAS */}
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <span style={{fontSize:13,fontWeight:700,color:'#111827'}}>⚙️ Configuración adaptativa de mesas</span>
-                    <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>El bot usará estos ajustes automáticamente al gestionar reservas</div>
-                  </div>
-                  <button className="btn btn-dark" onClick={async()=>{
-                    setSaving(true);
-                    for(const tb of tables){
-                      await supabase.from('tables').update({
-                        max_capacity:parseInt(document.getElementById(`max_${tb.id}`)?.value||tb.capacity),
-                        zone:document.getElementById(`zone_${tb.id}`)?.value||'General',
-                        is_group_table:document.getElementById(`group_${tb.id}`)?.checked||false,
-                        is_flexible:document.getElementById(`flex_${tb.id}`)?.checked||false,
-                        is_vip:document.getElementById(`vip_${tb.id}`)?.checked||false,
-                      }).eq('id',tb.id);
-                    }
-                    await loadSettings();setSaving(false);showToast('✓ Configuración guardada');
-                  }}><Save size={11} style={{marginRight:4}}/>{saving?'...':'Guardar todo'}</button>
-                </div>
-                <div style={{padding:'10px 20px',background:'#eff6ff',borderBottom:'1px solid #bfdbfe',fontSize:11,color:'#1d4ed8'}}>
-                  🤖 Si activas "Flexible" en una mesa de 4 con máximo 6, el bot la ofrecerá para grupos de 5-6 aunque no haya mesas más grandes disponibles.
-                </div>
-                <div style={{overflowX:'auto'}}>
-                  <table style={{width:'100%',borderCollapse:'collapse',minWidth:700}}>
-                    <thead>
-                      <tr style={{background:'#f9fafb'}}>
-                        <th style={{padding:'10px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',borderBottom:'1px solid #e5e7eb'}}>MESA</th>
-                        <th style={{padding:'10px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',borderBottom:'1px solid #e5e7eb'}}>BASE → MÁXIMO</th>
-                        <th style={{padding:'10px 16px',textAlign:'left',fontSize:11,fontWeight:700,color:'#6b7280',borderBottom:'1px solid #e5e7eb'}}>ZONA</th>
-                        <th style={{padding:'10px 16px',textAlign:'center',fontSize:11,fontWeight:700,color:'#16a34a',borderBottom:'1px solid #e5e7eb'}}>🟢 Flexible</th>
-                        <th style={{padding:'10px 16px',textAlign:'center',fontSize:11,fontWeight:700,color:'#8b5cf6',borderBottom:'1px solid #e5e7eb'}}>🟣 Solo grupos</th>
-                        <th style={{padding:'10px 16px',textAlign:'center',fontSize:11,fontWeight:700,color:'#f59e0b',borderBottom:'1px solid #e5e7eb'}}>🟡 VIP</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tables.map(tb=>(
-                        <tr key={tb.id} style={{borderBottom:'1px solid #f9fafb'}}>
-                          <td style={{padding:'10px 16px'}}>
-                            <div style={{fontSize:13,fontWeight:700,color:'#111827'}}>{tb.label}</div>
-                            <div style={{fontSize:11,color:'#9ca3af'}}>{tb.zone||'General'}</div>
-                          </td>
-                          <td style={{padding:'10px 16px'}}>
-                            <div style={{display:'flex',alignItems:'center',gap:6}}>
-                              <div style={{textAlign:'center'}}>
-                                <div style={{fontSize:13,fontWeight:700,color:'#6b7280',padding:'4px 8px',background:'#f3f4f6',borderRadius:6}}>{tb.capacity}p</div>
-                                <div style={{fontSize:9,color:'#9ca3af',marginTop:2}}>base</div>
-                              </div>
-                              <span style={{color:'#d1d5db'}}>→</span>
-                              <div style={{textAlign:'center'}}>
-                                <input id={`max_${tb.id}`} type="number" defaultValue={tb.max_capacity||tb.capacity} min={tb.capacity} style={{width:52,textAlign:'center',padding:'4px 6px',border:'1px solid #e5e7eb',borderRadius:6,fontSize:13,fontWeight:700,fontFamily:'system-ui'}}/>
-                                <div style={{fontSize:9,color:'#9ca3af',marginTop:2}}>máx</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{padding:'10px 16px'}}>
-                            <input id={`zone_${tb.id}`} defaultValue={tb.zone||'General'} placeholder="Interior, Terraza..." style={{width:110,padding:'5px 8px',border:'1px solid #e5e7eb',borderRadius:6,fontSize:12,fontFamily:'system-ui'}}/>
-                          </td>
-                          <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`flex_${tb.id}`} type="checkbox" defaultChecked={tb.is_flexible||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_flexible?'#16a34a':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_flexible?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
-                          </td>
-                          <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`group_${tb.id}`} type="checkbox" defaultChecked={tb.is_group_table||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_group_table?'#8b5cf6':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_group_table?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
-                          </td>
-                          <td style={{padding:'10px 16px',textAlign:'center'}}>
-                            <label style={{position:'relative',display:'inline-block',width:36,height:20,cursor:'pointer'}}>
-                              <input id={`vip_${tb.id}`} type="checkbox" defaultChecked={tb.is_vip||false} style={{opacity:0,width:0,height:0}}/>
-                              <span style={{position:'absolute',cursor:'pointer',inset:0,background:tb.is_vip?'#f59e0b':'#e5e7eb',borderRadius:20,transition:'0.2s'}}>
-                                <span style={{position:'absolute',height:14,width:14,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:tb.is_vip?'translateX(16px)':'translateX(0)',boxShadow:'0 1px 2px rgba(0,0,0,0.15)'}}/>
-                              </span>
-                            </label>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
             </div>
           )}
 
