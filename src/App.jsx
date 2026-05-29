@@ -1019,27 +1019,42 @@ return(
 <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>El bot acepta personas extra por mesa cuando no hay otra disponible</div>
 </div>
 <label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer"}}>
-<input type="checkbox" checked={advancedConfig.flexEnabled} onChange={e=>setAdvancedConfig(c=>({...c,flexEnabled:e.target.checked}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
-<span style={{position:"absolute",cursor:"pointer",inset:0,background:advancedConfig.flexEnabled?"#16a34a":"#e5e7eb",borderRadius:22,transition:"0.2s"}}
-onClick={()=>setAdvancedConfig(c=>({...c,flexEnabled:!c.flexEnabled}))}>
+<input type="checkbox" checked={advancedConfig.flexEnabled} onChange={()=>setAdvancedConfig(c=>({...c,flexEnabled:!c.flexEnabled}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<span style={{position:"absolute",cursor:"pointer",inset:0,background:advancedConfig.flexEnabled?"#16a34a":"#e5e7eb",borderRadius:22,transition:"0.2s"}}>
 <span style={{position:"absolute",height:16,width:16,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:advancedConfig.flexEnabled?"translateX(18px)":"translateX(0)",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
 </span>
 </label>
 </div>
 {advancedConfig.flexEnabled&&(
 <div style={{background:"#f9fafb",borderRadius:8,padding:16,marginTop:12}}>
-<div style={{fontSize:11,color:"#6b7280",marginBottom:12,fontWeight:600}}>Personas extra permitidas por capacidad de mesa:</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-{[{key:"extra2",label:"Mesas de 2p"},{key:"extra4",label:"Mesas de 4p"},{key:"extra6",label:"Mesas de 6p"},{key:"extra8",label:"Mesas de 8p+"}].map(({key,label})=>(
-<div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #e5e7eb"}}>
-<div style={{fontSize:12,fontWeight:600,color:"#374151"}}>{label}</div>
+<div style={{fontSize:11,color:"#6b7280",marginBottom:12,fontWeight:600}}>Capacidad máxima por tamaño de mesa — activa o desactiva cada tamaño:</div>
+<div style={{display:"flex",flexDirection:"column",gap:8}}>
+{[...new Set(tables.map(tb=>tb.capacity))].sort((a,b)=>a-b).map(cap=>{
+const key='flex_cap_'+cap;
+const isOn=advancedConfig[key+'_on']!==false;
+const maxVal=advancedConfig[key]||(cap+1);
+return(
+<div key={cap} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #e5e7eb",gap:12}}>
+<div style={{display:"flex",alignItems:"center",gap:10}}>
+<label style={{position:"relative",display:"inline-block",width:36,height:20,cursor:"pointer",flexShrink:0}}>
+<input type="checkbox" checked={isOn} onChange={()=>setAdvancedConfig(c=>({...c,[key+'_on']:!isOn}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<span style={{position:"absolute",inset:0,background:isOn?"#16a34a":"#e5e7eb",borderRadius:20,transition:"0.2s",cursor:"pointer"}}
+onClick={()=>setAdvancedConfig(c=>({...c,[key+'_on']:!isOn}))}>
+<span style={{position:"absolute",height:14,width:14,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:isOn?"translateX(16px)":"translateX(0)",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}}/>
+</span>
+</label>
+<div style={{fontSize:13,fontWeight:600,color:isOn?"#111827":"#9ca3af"}}>Mesas de {cap} personas</div>
+</div>
+{isOn&&(
 <div style={{display:"flex",alignItems:"center",gap:8}}>
-<span style={{fontSize:11,color:"#9ca3af"}}>+</span>
-<input type="number" value={advancedConfig[key]||0} min={0} max={6} onChange={e=>setAdvancedConfig(c=>({...c,[key]:parseInt(e.target.value)||0}))} style={{width:44,textAlign:"center",padding:"4px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:14,fontWeight:700,fontFamily:"system-ui"}}/>
-<span style={{fontSize:11,color:"#9ca3af"}}>extra</span>
+<span style={{fontSize:11,color:"#9ca3af"}}>hasta</span>
+<input type="number" value={maxVal} min={cap+1} max={cap+10} onChange={e=>setAdvancedConfig(c=>({...c,[key]:parseInt(e.target.value)||cap+1}))} style={{width:52,textAlign:"center",padding:"4px 6px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:14,fontWeight:700,fontFamily:"system-ui"}}/>
+<span style={{fontSize:11,color:"#9ca3af"}}>personas máx</span>
 </div>
+)}
 </div>
-))}
+);
+})}
 </div>
 </div>
 )}
@@ -1067,7 +1082,7 @@ onClick={()=>setAdvancedConfig(c=>({...c,flexEnabled:!c.flexEnabled}))}>
 <div style={{fontSize:11,color:"#9ca3af"}}>{desc}</div>
 </div>
 <label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer",flexShrink:0}}>
-<input type="checkbox" checked={advancedConfig[key]||false} onChange={e=>setAdvancedConfig(c=>({...c,[key]:e.target.checked}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<input type="checkbox" checked={advancedConfig[key]||false} onChange={()=>setAdvancedConfig(c=>({...c,[key]:!c[key]}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
 <span style={{position:"absolute",cursor:"pointer",inset:0,background:(advancedConfig[key]||false)?color:"#e5e7eb",borderRadius:22,transition:"0.2s"}}
 onClick={()=>setAdvancedConfig(c=>({...c,[key]:!c[key]}))}>
 <span style={{position:"absolute",height:16,width:16,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:(advancedConfig[key]||false)?"translateX(18px)":"translateX(0)",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
