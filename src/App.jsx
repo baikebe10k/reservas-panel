@@ -147,6 +147,7 @@ const [manualModePhones,setManualModePhones] = useState(()=>{try{return new Set(
 const [replyText,setReplyText] = useState('');
 const [sendingReply,setSendingReply] = useState(false);
 const [advancedConfig,setAdvancedConfig] = useState({flexEnabled:false,groupMin:8,autoCombine:true,autoConfirmGroups:false,extra2:1,extra4:2,extra6:2,extra8:4});
+const [newCapInput,setNewCapInput] = useState('');
 const audioCtx = useRef(null);
 const messagesEndRef = useRef(null);
 
@@ -1018,9 +1019,9 @@ return(
 <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>📐 Mesas flexibles</div>
 <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>El bot acepta personas extra por mesa cuando no hay otra disponible</div>
 </div>
-<label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer"}}>
-<input type="checkbox" checked={advancedConfig.flexEnabled} onChange={()=>setAdvancedConfig(c=>({...c,flexEnabled:!c.flexEnabled}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
-<span style={{position:"absolute",cursor:"pointer",inset:0,background:advancedConfig.flexEnabled?"#16a34a":"#e5e7eb",borderRadius:22,transition:"0.2s"}}>
+<label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer"}} onClick={()=>setAdvancedConfig(c=>({...c,flexEnabled:!c.flexEnabled}))}>
+<input type="checkbox" checked={advancedConfig.flexEnabled} onChange={()=>{}} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<span style={{position:"absolute",inset:0,background:advancedConfig.flexEnabled?"#16a34a":"#e5e7eb",borderRadius:22,transition:"0.2s"}}>
 <span style={{position:"absolute",height:16,width:16,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:advancedConfig.flexEnabled?"translateX(18px)":"translateX(0)",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
 </span>
 </label>
@@ -1029,10 +1030,13 @@ return(
 <div style={{background:"#f9fafb",borderRadius:8,padding:16,marginTop:12}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Capacidad máxima por tamaño de mesa:</div>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
+<input type="number" value={newCapInput} onChange={e=>setNewCapInput(e.target.value)} placeholder="ej: 3" style={{width:60,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"system-ui"}}/>
 <button className="btn btn-dark" style={{fontSize:11}} onClick={()=>{
-const cap=parseInt(prompt("¿Qué capacidad quieres añadir? (ej: 3, 5, 10)"));
-if(cap&&cap>0)setAdvancedConfig(c=>({...c,['flex_cap_'+cap+'_on']:true,['flex_cap_'+cap]:cap+1,flexExtraCaps:[...(c.flexExtraCaps||[]),cap].filter((v,i,a)=>a.indexOf(v)===i)}));
-}}>+ Añadir tamaño</button>
+const cap=parseInt(newCapInput);
+if(cap&&cap>0){setAdvancedConfig(c=>({...c,['flex_cap_'+cap+'_on']:true,['flex_cap_'+cap]:cap+1,flexExtraCaps:[...(c.flexExtraCaps||[]),cap].filter((v,i,a)=>a.indexOf(v)===i)}));setNewCapInput('');}
+}}>+ Añadir</button>
+</div>
 </div>
 <div style={{display:"flex",flexDirection:"column",gap:8}}>
 {[...new Set([...tables.map(tb=>tb.capacity),...(advancedConfig.flexExtraCaps||[])])].sort((a,b)=>a-b).map(cap=>{
@@ -1090,10 +1094,9 @@ return(
 <div style={{fontSize:13,fontWeight:600,color:"#111827",marginBottom:2}}>{title}</div>
 <div style={{fontSize:11,color:"#9ca3af"}}>{desc}</div>
 </div>
-<label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer",flexShrink:0}}>
-<input type="checkbox" checked={advancedConfig[key]||false} onChange={()=>setAdvancedConfig(c=>({...c,[key]:!c[key]}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
-<span style={{position:"absolute",cursor:"pointer",inset:0,background:(advancedConfig[key]||false)?color:"#e5e7eb",borderRadius:22,transition:"0.2s"}}
-onClick={()=>setAdvancedConfig(c=>({...c,[key]:!c[key]}))}>
+<label style={{position:"relative",display:"inline-block",width:40,height:22,cursor:"pointer",flexShrink:0}} onClick={()=>setAdvancedConfig(c=>({...c,[key]:!c[key]}))}>
+<input type="checkbox" checked={advancedConfig[key]||false} onChange={()=>{}} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<span style={{position:"absolute",inset:0,background:(advancedConfig[key]||false)?color:"#e5e7eb",borderRadius:22,transition:"0.2s"}}>
 <span style={{position:"absolute",height:16,width:16,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:(advancedConfig[key]||false)?"translateX(18px)":"translateX(0)",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
 </span>
 </label>
