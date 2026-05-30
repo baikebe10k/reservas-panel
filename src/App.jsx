@@ -1027,31 +1027,40 @@ return(
 </div>
 {advancedConfig.flexEnabled&&(
 <div style={{background:"#f9fafb",borderRadius:8,padding:16,marginTop:12}}>
-<div style={{fontSize:11,color:"#6b7280",marginBottom:12,fontWeight:600}}>Capacidad máxima por tamaño de mesa — activa o desactiva cada tamaño:</div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Capacidad máxima por tamaño de mesa:</div>
+<button className="btn btn-dark" style={{fontSize:11}} onClick={()=>{
+const cap=parseInt(prompt("¿Qué capacidad quieres añadir? (ej: 3, 5, 10)"));
+if(cap&&cap>0)setAdvancedConfig(c=>({...c,['flex_cap_'+cap+'_on']:true,['flex_cap_'+cap]:cap+1,flexExtraCaps:[...(c.flexExtraCaps||[]),cap].filter((v,i,a)=>a.indexOf(v)===i)}));
+}}>+ Añadir tamaño</button>
+</div>
 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-{[...new Set(tables.map(tb=>tb.capacity))].sort((a,b)=>a-b).map(cap=>{
+{[...new Set([...tables.map(tb=>tb.capacity),...(advancedConfig.flexExtraCaps||[])])].sort((a,b)=>a-b).map(cap=>{
 const key='flex_cap_'+cap;
-const isOn=advancedConfig[key+'_on']!==false;
+const isOn=advancedConfig[key+'_on']===true;
 const maxVal=advancedConfig[key]||(cap+1);
+const isExtra=(advancedConfig.flexExtraCaps||[]).includes(cap)&&!tables.find(tb=>tb.capacity===cap);
 return(
 <div key={cap} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #e5e7eb",gap:12}}>
-<div style={{display:"flex",alignItems:"center",gap:10}}>
-<label style={{position:"relative",display:"inline-block",width:36,height:20,cursor:"pointer",flexShrink:0}}>
-<input type="checkbox" checked={isOn} onChange={()=>setAdvancedConfig(c=>({...c,[key+'_on']:!isOn}))} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
-<span style={{position:"absolute",inset:0,background:isOn?"#16a34a":"#e5e7eb",borderRadius:20,transition:"0.2s",cursor:"pointer"}}
-onClick={()=>setAdvancedConfig(c=>({...c,[key+'_on']:!isOn}))}>
+<div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+<label style={{position:"relative",display:"inline-block",width:36,height:20,cursor:"pointer",flexShrink:0}} onClick={()=>setAdvancedConfig(c=>({...c,[key+'_on']:!isOn}))}>
+<input type="checkbox" checked={isOn} onChange={()=>{}} style={{opacity:0,width:0,height:0,position:"absolute"}}/>
+<span style={{position:"absolute",inset:0,background:isOn?"#16a34a":"#e5e7eb",borderRadius:20,transition:"0.2s"}}>
 <span style={{position:"absolute",height:14,width:14,left:3,bottom:3,background:"white",borderRadius:"50%",transition:"0.2s",transform:isOn?"translateX(16px)":"translateX(0)",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}}/>
 </span>
 </label>
 <div style={{fontSize:13,fontWeight:600,color:isOn?"#111827":"#9ca3af"}}>Mesas de {cap} personas</div>
 </div>
-{isOn&&(
 <div style={{display:"flex",alignItems:"center",gap:8}}>
+{isOn&&(
+<>
 <span style={{fontSize:11,color:"#9ca3af"}}>hasta</span>
-<input type="number" value={maxVal} min={cap+1} max={cap+10} onChange={e=>setAdvancedConfig(c=>({...c,[key]:parseInt(e.target.value)||cap+1}))} style={{width:52,textAlign:"center",padding:"4px 6px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:14,fontWeight:700,fontFamily:"system-ui"}}/>
-<span style={{fontSize:11,color:"#9ca3af"}}>personas máx</span>
-</div>
+<input type="number" value={maxVal} min={cap+1} max={cap+20} onChange={e=>setAdvancedConfig(c=>({...c,[key]:parseInt(e.target.value)||cap+1}))} style={{width:52,textAlign:"center",padding:"4px 6px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:14,fontWeight:700,fontFamily:"system-ui"}}/>
+<span style={{fontSize:11,color:"#9ca3af"}}>máx</span>
+</>
 )}
+{isExtra&&<button className="btn btn-red" style={{fontSize:11,padding:"2px 8px"}} onClick={()=>setAdvancedConfig(c=>({...c,flexExtraCaps:(c.flexExtraCaps||[]).filter(x=>x!==cap)}))}>✕</button>}
+</div>
 </div>
 );
 })}
