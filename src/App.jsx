@@ -244,7 +244,7 @@ if(!replyText.trim())return;
 setSendingReply(true);
 try{
 await fetch('https://reservas-bot-production-db9b.up.railway.app/send-message',{
-method:'POST',headers:{'Content-Type':'application/json'},
+    method:'POST',headers:{'Content-Type':'application/json','x-panel-token':import.meta.env.VITE_PANEL_TOKEN||'reservia_panel_2026_xK9mP3'},
 body:JSON.stringify({phone,message:replyText,restaurantId:RESTAURANT_ID})
 });
 await supabase.from('conversations').insert([{
