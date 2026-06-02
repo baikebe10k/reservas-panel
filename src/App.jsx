@@ -277,7 +277,21 @@ if(error){alert('Error: '+error.message);return;}
 setEditingNote(null);setNoteText('');loadReservations();
 }
 
-async function confirmRes(id){await supabase.from("reservations").update({status:"confirmed"}).eq("id",id);loadReservations();}
+async function confirmRes(id){
+await supabase.from("reservations").update({status:"confirmed"}).eq("id",id);
+// Mandar WhatsApp de confirmación si era pending
+const res = reservations.find(r=>r.id===id);
+if(res && res.status==='pending'){
+try{
+await fetch('https://reservas-bot-production-db9b.up.railway.app/confirm-reservation',{
+method:'POST',
+headers:{'Content-Type':'application/json','x-panel-token':import.meta.env.VITE_PANEL_TOKEN||'reservia_panel_2026_xK9mP3'},
+body:JSON.stringify({reservation:res, restaurantName:restaurant?.name||'Restaurante', language:res.language||'es'})
+});
+}catch(e){console.error('Error enviando confirmación WhatsApp:',e);}
+}
+loadReservations();
+}
 async function cancelRes(id){await supabase.from("reservations").update({status:"cancelled"}).eq("id",id);loadReservations();}
 
 async function saveRestaurant(){
