@@ -145,6 +145,7 @@ const [manualModePhones,setManualModePhones] = useState(()=>{try{return new Set(
 const [replyText,setReplyText] = useState('');
 const [sendingReply,setSendingReply] = useState(false);
 const [advancedConfig,setAdvancedConfig] = useState({flexEnabled:false,groupMin:8,autoCombine:true,autoConfirmGroups:false,extra2:1,extra4:2,extra6:2,extra8:4});
+const [savedAdvancedConfig,setSavedAdvancedConfig] = useState(null);
 const [newCapInput,setNewCapInput] = useState('');
 const audioCtx = useRef(null);
 const messagesEndRef = useRef(null);
@@ -183,6 +184,9 @@ try{localStorage.setItem('seenResIds',JSON.stringify([...newSeen]));}catch{}
 }
 
 useEffect(()=>{if(tab==='reservations')markAllSeen();},[tab,reservations]);
+useEffect(()=>{
+if(tab!=='advanced'&&savedAdvancedConfig){setAdvancedConfig(savedAdvancedConfig);}
+},[tab]);
 useEffect(()=>{if(tab==='conversations')messagesEndRef.current?.scrollIntoView({behavior:'smooth'});},[selectedConv,tab,conversations]);
 
 function showToast(msg,type='success'){setToast({msg,type});setTimeout(()=>setToast(null),3500);}
@@ -209,7 +213,7 @@ setRestaurant(rest);
 setRestForm({name:rest?.name||"",phone:rest?.phone||"",opening_time:rest?.opening_time||"13:00",closing_time:rest?.closing_time||"23:00",slot_duration:rest?.slot_duration||30});
 setOpenDays(rest?.open_days||["monday","tuesday","wednesday","thursday","friday","saturday"]);
 setShifts(rest?.shifts||[]);
-if(rest?.advanced_config){try{setAdvancedConfig(JSON.parse(rest.advanced_config));}catch{}}
+if(rest?.advanced_config){try{const ac=JSON.parse(rest.advanced_config);setAdvancedConfig(ac);setSavedAdvancedConfig(ac);}catch{}}
 const{data:tbls}=await supabase.from("tables").select("*").eq("restaurant_id",RESTAURANT_ID).order("label");
 setTables(tbls||[]);
 }
@@ -285,6 +289,7 @@ await loadSettings();setEditingRestaurant(false);setSaving(false);showSaveMsg(t.
 async function saveAdvancedConfig(){
 setSaving(true);
 await supabase.from("restaurants").update({advanced_config:JSON.stringify(advancedConfig)}).eq("id",RESTAURANT_ID);
+setSavedAdvancedConfig(advancedConfig);
 setSaving(false);showToast('✓ Configuración avanzada guardada');
 }
 
