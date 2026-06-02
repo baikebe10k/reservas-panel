@@ -83,9 +83,9 @@ const WEEKDAYS_CONFIG = [
 {key:'thursday',es:'Jue',ca:'Dj'},{key:'friday',es:'Vie',ca:'Dv'},{key:'saturday',es:'Sáb',ca:'Ds'},{key:'sunday',es:'Dom',ca:'Dg'},
 ];
 
-function Toggle({checked, onChange, color}) {
-return (
-<div style={{position:'relative',display:'inline-block',width:40,height:22,cursor:'pointer',flexShrink:0}} onClick={()=>onChange&&onChange(!checked)}>
+function Toggle({checked, onChange, color, disabled}) {
+    return (
+      <div style={{position:'relative',display:'inline-block',width:40,height:22,cursor:disabled?'not-allowed':'pointer',flexShrink:0,opacity:disabled?0.4:1}} onClick={()=>!disabled&&onChange&&onChange(!checked)}>
 <span style={{position:'absolute',inset:0,background:checked?color:'#e5e7eb',borderRadius:22,transition:'0.2s'}}>
 <span style={{position:'absolute',height:16,width:16,left:3,bottom:3,background:'white',borderRadius:'50%',transition:'0.2s',transform:checked?'translateX(18px)':'translateX(0)',boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}/>
 </span>
@@ -1092,18 +1092,40 @@ return(
 
 <div style={{padding:"16px 20px"}}>
 <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:12}}>Opciones para grupos</div>
-{[
-{key:"autoCombine",title:"🔗 Combinar mesas automáticamente",desc:"El bot junta mesas para acomodar grupos grandes cuando no hay una mesa del tamaño suficiente",color:"#16a34a"},
-{key:"autoConfirmGroups",title:"✅ Confirmar grupos automáticamente",desc:"Si está desactivado, la reserva del grupo queda pendiente hasta que el restaurante la apruebe manualmente",color:"#3b82f6"},
-].map(({key,title,desc,color})=>(
-<div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f9fafb",gap:16}}>
-<div style={{flex:1}}>
-<div style={{fontSize:13,fontWeight:600,color:"#111827",marginBottom:2}}>{title}</div>
-<div style={{fontSize:11,color:"#9ca3af"}}>{desc}</div>
-</div>
-<Toggle checked={advancedConfig[key]||false} color={color} onChange={v=>setAdvancedConfig(c=>({...c,[key]:v}))}/>
-</div>
-))}
+{/* Toggle: Confirmar grupos automáticamente */}
+<div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f9fafb",gap:16}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:"#111827",marginBottom:2}}>✅ Confirmar grupos automáticamente</div>
+                      <div style={{fontSize:11,color:"#9ca3af"}}>Si está desactivado, la reserva del grupo queda pendiente hasta que el restaurante la apruebe manualmente</div>
+                    </div>
+                    <Toggle
+                      checked={advancedConfig.autoConfirmGroups||false}
+                      color="#3b82f6"
+                      onChange={v=>setAdvancedConfig(c=>({
+                        ...c,
+                        autoConfirmGroups: v,
+                        autoCombine: v ? c.autoCombine : false,
+                      }))}
+                    />
+                  </div>
+
+                  {/* Toggle: Combinar mesas — bloqueado si autoConfirmGroups está off */}
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f9fafb",gap:16,opacity:advancedConfig.autoConfirmGroups?1:0.45}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:"#111827",marginBottom:2}}>🔗 Combinar mesas automáticamente</div>
+                      <div style={{fontSize:11,color:"#9ca3af"}}>
+                        {advancedConfig.autoConfirmGroups
+                          ? "El bot junta mesas para acomodar grupos grandes cuando no hay una mesa del tamaño suficiente"
+                          : "Requiere «Confirmar grupos automáticamente» activado"}
+                      </div>
+                    </div>
+                    <Toggle
+                      checked={advancedConfig.autoCombine||false}
+                      color="#16a34a"
+                      disabled={!advancedConfig.autoConfirmGroups}
+                      onChange={v=>setAdvancedConfig(c=>({...c,autoCombine:v}))}
+                    />
+                  </div>
 {!(advancedConfig.autoConfirmGroups)&&(
 <div style={{marginTop:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#92400e"}}>
 ⚠️ El bot dirá al cliente: "Tu reserva está pendiente de confirmación. Te avisaremos en breve."
