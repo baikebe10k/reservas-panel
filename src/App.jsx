@@ -96,20 +96,20 @@ function Toggle({checked, onChange, color, disabled}) {
 // Usa las mesas reales de Supabase (tables + reservations)
 
 function FloorPlanTab({tables, reservations, today, t, onUpdateTableStatus, lang}) {
-    const canvasRef = React.useRef(null);
-    const wrapRef = React.useRef(null);
-    const [zone, setZone] = React.useState('interior');
-    const [zones, setZones] = React.useState(['interior']);
-    const [layout, setLayout] = React.useState({});
-    const [decorations, setDecorations] = React.useState([]);
-    const [selId, setSelId] = React.useState(null);
-    const [dragId, setDragId] = React.useState(null);
-    const [isEditMode, setIsEditMode] = React.useState(false);
-    const [savingFloor, setSavingFloor] = React.useState(false);
-    const [selectedTableInfo, setSelectedTableInfo] = React.useState(null);
-    const dox = React.useRef(0), doy = React.useRef(0);
+    const canvasRef = useRef(null);
+    const wrapRef = useRef(null);
+    const [zone, setZone] = useState('interior');
+    const [zones, setZones] = useState(['interior']);
+    const [layout, setLayout] = useState({});
+    const [decorations, setDecorations] = useState([]);
+    const [selId, setSelId] = useState(null);
+    const [dragId, setDragId] = useState(null);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [savingFloor, setSavingFloor] = useState(false);
+    const [selectedTableInfo, setSelectedTableInfo] = useState(null);
+    const dox = useRef(0), doy = useRef(0);
     const dpr = window.devicePixelRatio || 1;
-    const nid = React.useRef(1000);
+    const nid = useRef(1000);
   
     const ST = {
       free:     {fill:'#ffffff', stroke:'#22c55e', text:'#111827', dot:'#22c55e', chair:'#d1fae5', chairStroke:'#86efac'},
@@ -153,7 +153,7 @@ function FloorPlanTab({tables, reservations, today, t, onUpdateTableStatus, lang
     }
   
     // Init layout con posiciones automáticas si no hay guardadas
-    React.useEffect(() => {
+    useEffect(() => {
       const saved = localStorage.getItem('reservia_floor_layout');
       const savedZones = localStorage.getItem('reservia_floor_zones');
       const savedDecos = localStorage.getItem('reservia_floor_decorations');
@@ -162,7 +162,7 @@ function FloorPlanTab({tables, reservations, today, t, onUpdateTableStatus, lang
       if (savedDecos) { try { setDecorations(JSON.parse(savedDecos)); } catch {} }
     }, []);
   
-    React.useEffect(() => {
+    useEffect(() => {
       tables.forEach((tb, i) => {
         setLayout(prev => {
           if (prev[tb.id]) return prev;
@@ -174,7 +174,7 @@ function FloorPlanTab({tables, reservations, today, t, onUpdateTableStatus, lang
       });
     }, [tables]);
   
-    React.useEffect(() => {
+    useEffect(() => {
       renderFloor();
     }, [tables, reservations, layout, decorations, selId, zone, isEditMode]);
   
