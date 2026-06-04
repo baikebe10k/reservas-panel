@@ -92,7 +92,518 @@ function Toggle({checked, onChange, color, disabled}) {
 </div>
 );
 }
+// FloorPlan component — se integra en App.jsx como pestaña "Plano"
+// Usa las mesas reales de Supabase (tables + reservations)
 
+function FloorPlanTab({tables, reservations, today, t, onUpdateTableStatus, lang}) {
+    const canvasRef = React.useRef(null);
+    const wrapRef = React.useRef(null);
+    const [zone, setZone] = React.useState('interior');
+    const [zones, setZones] = React.useState(['interior']);
+    const [layout, setLayout] = React.useState({});
+    const [decorations, setDecorations] = React.useState([]);
+    const [selId, setSelId] = React.useState(null);
+    const [dragId, setDragId] = React.useState(null);
+    const [isEditMode, setIsEditMode] = React.useState(false);
+    const [savingFloor, setSavingFloor] = React.useState(false);
+    const [selectedTableInfo, setSelectedTableInfo] = React.useState(null);
+    const dox = React.useRef(0), doy = React.useRef(0);
+    const dpr = window.devicePixelRatio || 1;
+    const nid = React.useRef(1000);
+  
+    const ST = {
+      free:     {fill:'#ffffff', stroke:'#22c55e', text:'#111827', dot:'#22c55e', chair:'#d1fae5', chairStroke:'#86efac'},
+      reserved: {fill:'#111827', stroke:'#111827', text:'#ffffff', dot:'#ffffff', chair:'#374151', chairStroke:'#6b7280'},
+      occupied: {fill:'#fef2f2', stroke:'#ef4444', text:'#ef4444', dot:'#ef4444', chair:'#fee2e2', chairStroke:'#fca5a5'},
+      blocked:  {fill:'#f3f4f6', stroke:'#d1d5db', text:'#9ca3af', dot:'#9ca3af', chair:'#f3f4f6', chairStroke:'#e5e7eb'},
+      pending:  {fill:'#fffbeb', stroke:'#f59e0b', text:'#b45309', dot:'#f59e0b', chair:'#fef3c7', chairStroke:'#fcd34d'},
+    };
+  
+    function getTableDisplayStatus(table) {
+      // Status operativo real
+      if (table.status === 'occupied' || table.manual_status === 'occupied') return 'occupied';
+      if (table.status === 'blocked' || table.manual_status === 'blocked') return 'blocked';
+      if (table.status === 'cleaning') return 'blocked';
+      // Buscar reserva activa ahora mismo
+      const now = new Date();
+      const todayStr = now.toLocaleDateString('sv-SE');
+      const activeRes = reservations.find(r => {
+        if (r.table_id !== table.id || r.status !== 'confirmed') return false;
+        const start = new Date(r.date + 'T' + r.time);
+        if (isNaN(start.getTime()) || !r.end_time) return false;
+        const end = new Date(r.end_time);
+        return start <= now && end > now;
+      });
+      if (activeRes) return 'occupied';
+      // Reserva de hoy pendiente
+      const todayRes = reservations.find(r =>
+        r.table_id === table.id && r.date === todayStr &&
+        (r.status === 'confirmed' || r.status === 'pending')
+      );
+      if (todayRes) return todayRes.status === 'pending' ? 'pending' : 'reserved';
+      return 'free';
+    }
+  
+    function getTodayReservation(tableId) {
+      const todayStr = new Date().toLocaleDateString('sv-SE');
+      return reservations.find(r =>
+        r.table_id === tableId && r.date === todayStr &&
+        (r.status === 'confirmed' || r.status === 'pending')
+      );
+    }
+  
+    // Init layout con posiciones automáticas si no hay guardadas
+    React.useEffect(() => {
+      const saved = localStorage.getItem('reservia_floor_layout');
+      const savedZones = localStorage.getItem('reservia_floor_zones');
+      const savedDecos = localStorage.getItem('reservia_floor_decorations');
+      if (saved) { try { setLayout(JSON.parse(saved)); } catch {} }
+      if (savedZones) { try { setZones(JSON.parse(savedZones)); } catch {} }
+      if (savedDecos) { try { setDecorations(JSON.parse(savedDecos)); } catch {} }
+    }, []);
+  
+    React.useEffect(() => {
+      tables.forEach((tb, i) => {
+        setLayout(prev => {
+          if (prev[tb.id]) return prev;
+          const cols = 4;
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          return { ...prev, [tb.id]: { x: 50 + col * 100, y: 70 + row * 110, zone: 'interior' } };
+        });
+      });
+    }, [tables]);
+  
+    React.useEffect(() => {
+      renderFloor();
+    }, [tables, reservations, layout, decorations, selId, zone, isEditMode]);
+  
+    function getCanvasSize() {
+      const wrap = wrapRef.current;
+      if (!wrap) return { W: 600, H: 400 };
+      return { W: wrap.clientWidth, H: Math.max(360, wrap.clientHeight) };
+    }
+  
+    function renderFloor() {
+      const canvas = canvasRef.current;
+      const wrap = wrapRef.current;
+      if (!canvas || !wrap) return;
+      const { W, H } = getCanvasSize();
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+      // Background
+      ctx.fillStyle = '#dde3ea';
+      ctx.fillRect(0, 0, W, H);
+      // Grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+      for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  
+      // Decorations
+      decorations.filter(d => d.zone === zone).forEach(d => drawDecoration(ctx, d));
+  
+      // Tables
+      tables.filter(tb => {
+        const pos = layout[tb.id];
+        return pos && pos.zone === zone;
+      }).forEach(tb => {
+        const pos = layout[tb.id];
+        const statusKey = getTableDisplayStatus(tb);
+        const s = ST[statusKey] || ST.free;
+        const todayR = getTodayReservation(tb.id);
+        drawTable(ctx, tb, pos, s, todayR, selId === tb.id);
+      });
+  
+      // Edit mode hint
+      if (isEditMode) {
+        ctx.fillStyle = 'rgba(59,130,246,0.08)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#3b82f6';
+        ctx.font = 'bold 11px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillText('✏️ Modo edición — arrastra para mover', W - 12, 20);
+      }
+    }
+  
+    function drawChair(ctx, px, py, angle, size, fill, stroke) {
+      ctx.save(); ctx.translate(px, py); ctx.rotate(angle);
+      ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.roundRect(-size/2, -size*0.55, size, size*0.38, 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = fill; ctx.beginPath(); ctx.roundRect(-size/2, -size*0.1, size, size*0.6, size/2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+  
+    function drawChairs(ctx, type, x, y, w, h, cap, s) {
+      const cs = 10, g = 4;
+      if (type === 'round') {
+        const r = w/2, n = Math.min(cap, 8);
+        for (let i = 0; i < n; i++) {
+          const a = (Math.PI*2/n)*i - Math.PI/2;
+          drawChair(ctx, x+r+Math.cos(a)*(r+cs), y+r+Math.sin(a)*(r+cs), a+Math.PI/2, cs, s.chair, s.chairStroke);
+        }
+      } else {
+        const cols = Math.max(1, Math.floor(w/24)), rows = Math.max(1, Math.floor(h/24));
+        for (let i = 0; i < cols; i++) {
+          const chx = x+(w/(cols+1))*(i+1);
+          drawChair(ctx, chx, y-cs/2-g, 0, cs, s.chair, s.chairStroke);
+          drawChair(ctx, chx, y+h+cs/2+g, Math.PI, cs, s.chair, s.chairStroke);
+        }
+        for (let i = 0; i < rows; i++) {
+          const chy = y+(h/(rows+1))*(i+1);
+          drawChair(ctx, x-cs/2-g, chy, -Math.PI/2, cs, s.chair, s.chairStroke);
+          drawChair(ctx, x+w+cs/2+g, chy, Math.PI/2, cs, s.chair, s.chairStroke);
+        }
+      }
+    }
+  
+    function drawTable(ctx, tb, pos, s, todayR, selected) {
+      const { x, y } = pos;
+      const isRound = tb.shape === 'round';
+      const w = tb.shape === 'rect' ? 90 : 60;
+      const h = tb.shape === 'rect' ? 50 : 60;
+  
+      drawChairs(ctx, isRound ? 'round' : 'square', x, y, w, h, tb.capacity, s);
+  
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      if (isRound) { ctx.beginPath(); ctx.arc(x+w/2+2, y+h/2+2, w/2, 0, Math.PI*2); ctx.fill(); }
+      else { ctx.fillRect(x+2, y+2, w, h); }
+  
+      // Table
+      ctx.fillStyle = s.fill; ctx.strokeStyle = s.stroke; ctx.lineWidth = 2;
+      if (isRound) { ctx.beginPath(); ctx.arc(x+w/2, y+h/2, w/2, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill(); ctx.stroke(); }
+  
+      // Number
+      ctx.fillStyle = s.text; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(tb.label, x+w/2, y+h/2 - (todayR ? 7 : 3));
+  
+      // Capacity
+      ctx.font = '9px system-ui'; ctx.fillStyle = s.fill === '#111827' ? 'rgba(255,255,255,0.5)' : '#94a3b8';
+      ctx.fillText(tb.capacity + 'p', x+w/2, y+h/2 + (todayR ? 3 : 9));
+  
+      // Reservation info
+      if (todayR) {
+        ctx.font = 'bold 8px system-ui'; ctx.fillStyle = s.fill === '#111827' ? 'rgba(255,255,255,0.85)' : s.text;
+        ctx.fillText(todayR.time, x+w/2, y+h/2+14);
+      }
+  
+      // Status dot
+      ctx.fillStyle = s.dot; ctx.beginPath(); ctx.arc(x+w-7, y+7, 4, 0, Math.PI*2); ctx.fill();
+  
+      // Selection ring
+      if (selected) {
+        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2.5;
+        if (isRound) { ctx.beginPath(); ctx.arc(x+w/2, y+h/2, w/2+5, 0, Math.PI*2); ctx.stroke(); }
+        else { ctx.beginPath(); ctx.roundRect(x-5, y-5, w+10, h+10, 9); ctx.stroke(); }
+      }
+    }
+  
+    function drawDecoration(ctx, d) {
+      const { x, y, w, h, type, label } = d;
+      if (type === 'wall') {
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath(); ctx.roundRect(x, y, w, h, 2); ctx.fill();
+        if (selId === d.id) { ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.strokeRect(x-3,y-3,w+6,h+6); }
+      } else if (type === 'door') {
+        ctx.fillStyle = '#dde3ea'; ctx.fillRect(x, y, w, 8);
+        ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x,y+8); ctx.lineTo(x,y+8+w*.88); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x,y+8,w*.88,0,Math.PI/2); ctx.stroke();
+        ctx.setLineDash([3,3]); ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(x,y+8); ctx.lineTo(x+w*.88,y+8); ctx.stroke();
+        ctx.setLineDash([]);
+        if (selId === d.id) { ctx.strokeStyle='#3b82f6';ctx.lineWidth=1.5;ctx.strokeRect(x-4,y-4,w+8,w+16); }
+      } else if (type === 'bar') {
+        ctx.fillStyle = '#f0f4f8'; ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(x,y,w,h,4); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle='#e2e8f0';ctx.lineWidth=0.8;
+        for(let i=x+9;i<x+w-3;i+=8){ctx.beginPath();ctx.moveTo(i,y+3);ctx.lineTo(i,y+h-3);ctx.stroke();}
+        ctx.fillStyle='#475569';ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText('BARRA',x+w/2,y+h/2);
+        if (selId===d.id){ctx.strokeStyle='#3b82f6';ctx.lineWidth=2;ctx.strokeRect(x-3,y-3,w+6,h+6);}
+      } else if (type === 'kitchen') {
+        ctx.fillStyle='#c8d5e0';ctx.strokeStyle='#94a3b8';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.roundRect(x,y,w,h,6);ctx.fill();ctx.stroke();
+        ctx.fillStyle='#64748b';ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText('COCINA',x+w/2,y+h/2);
+        if(selId===d.id){ctx.strokeStyle='#3b82f6';ctx.lineWidth=2;ctx.strokeRect(x-3,y-3,w+6,h+6);}
+      } else if (type === 'plant') {
+        const cx=x+w/2,cy=y+h/2,r=w/2;
+        ctx.fillStyle='#dcfce7';ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#86efac';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+        ctx.fillStyle='#4ade80';ctx.strokeStyle='#22c55e';ctx.lineWidth=0.8;
+        [[0,-0.5,0],[-.4,.2,-.3],[.4,.2,.3]].forEach(([dx,dy,rot])=>{
+          ctx.save();ctx.translate(cx+dx*r*1.1,cy+dy*r*1.1);ctx.rotate(rot);
+          ctx.beginPath();ctx.ellipse(0,0,r*.28,r*.5,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
+        });
+        if(selId===d.id){ctx.strokeStyle='#3b82f6';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,r+4,0,Math.PI*2);ctx.stroke();}
+      }
+    }
+  
+    function hitTest(px, py) {
+      // Tables first
+      const zoneTables = tables.filter(tb => layout[tb.id]?.zone === zone);
+      for (let i = zoneTables.length-1; i >= 0; i--) {
+        const tb = zoneTables[i];
+        const pos = layout[tb.id];
+        const w = tb.shape === 'rect' ? 90 : 60;
+        const h = tb.shape === 'rect' ? 50 : 60;
+        if (px>=pos.x-14&&px<=pos.x+w+14&&py>=pos.y-14&&py<=pos.y+h+14) return { type: 'table', el: tb };
+      }
+      // Decorations
+      const zoneDecos = decorations.filter(d => d.zone === zone);
+      for (let i = zoneDecos.length-1; i >= 0; i--) {
+        const d = zoneDecos[i];
+        if (px>=d.x-10&&px<=d.x+d.w+10&&py>=d.y-10&&py<=d.y+d.h+10) return { type: 'deco', el: d };
+      }
+      return null;
+    }
+  
+    function handleCanvasTouch(e) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvasRef.current.getBoundingClientRect();
+      const px = touch.clientX - rect.left;
+      const py = touch.clientY - rect.top;
+      const hit = hitTest(px, py);
+      if (hit) {
+        setSelId(hit.el.id);
+        if (isEditMode) {
+          setDragId(hit.el.id);
+          const pos = hit.type === 'table' ? layout[hit.el.id] : hit.el;
+          dox.current = px - pos.x;
+          doy.current = py - pos.y;
+        }
+        if (hit.type === 'table') {
+          setSelectedTableInfo(hit.el);
+        }
+      } else {
+        setSelId(null);
+        setSelectedTableInfo(null);
+      }
+    }
+  
+    function handleCanvasTouchMove(e) {
+      e.preventDefault();
+      if (!dragId || !isEditMode) return;
+      const touch = e.touches[0];
+      const rect = canvasRef.current.getBoundingClientRect();
+      const px = touch.clientX - rect.left;
+      const py = touch.clientY - rect.top;
+      const nx = Math.max(0, px - dox.current);
+      const ny = Math.max(0, py - doy.current);
+      // Check if it's a table or decoration
+      if (tables.find(tb => tb.id === dragId)) {
+        setLayout(prev => ({ ...prev, [dragId]: { ...prev[dragId], x: nx, y: ny } }));
+      } else {
+        setDecorations(prev => prev.map(d => d.id === dragId ? { ...d, x: nx, y: ny } : d));
+      }
+    }
+  
+    function handleCanvasTouchEnd() { setDragId(null); }
+  
+    function handleCanvasClick(e) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const hit = hitTest(px, py);
+      if (hit) {
+        setSelId(hit.el.id);
+        if (hit.type === 'table') setSelectedTableInfo(hit.el);
+      } else {
+        setSelId(null);
+        setSelectedTableInfo(null);
+      }
+    }
+  
+    function saveLayout() {
+      setSavingFloor(true);
+      try {
+        localStorage.setItem('reservia_floor_layout', JSON.stringify(layout));
+        localStorage.setItem('reservia_floor_zones', JSON.stringify(zones));
+        localStorage.setItem('reservia_floor_decorations', JSON.stringify(decorations));
+      } catch {}
+      setTimeout(() => setSavingFloor(false), 800);
+    }
+  
+    function addDecoration(type) {
+      const defaults = {
+        wall: {w:120,h:8}, door: {w:52,h:52}, bar: {w:110,h:34},
+        kitchen: {w:90,h:50}, plant: {w:34,h:34}
+      };
+      const d = defaults[type] || {w:60,h:40};
+      setDecorations(prev => [...prev, {
+        id: nid.current++, type, zone,
+        x: 60+Math.random()*80, y: 60+Math.random()*60,
+        w: d.w, h: d.h, label: type
+      }]);
+    }
+  
+    function deleteSelected() {
+      if (!selId) return;
+      setDecorations(prev => prev.filter(d => d.id !== selId));
+      setSelId(null);
+      setSelectedTableInfo(null);
+    }
+  
+    function addZone() {
+      const name = prompt('Nombre de la nueva zona (ej: Terraza, Privado):');
+      if (!name) return;
+      const key = name.toLowerCase().replace(/\s+/g, '_');
+      setZones(prev => [...prev, key]);
+      setZone(key);
+    }
+  
+    // Stats
+    const zoneTables = tables.filter(tb => layout[tb.id]?.zone === zone);
+    const freeCount = zoneTables.filter(tb => getTableDisplayStatus(tb) === 'free').length;
+    const reservedCount = zoneTables.filter(tb => ['reserved','pending'].includes(getTableDisplayStatus(tb))).length;
+    const occupiedCount = zoneTables.filter(tb => getTableDisplayStatus(tb) === 'occupied').length;
+  
+    const TOOLS = [
+      {type:'wall',label:'Pared'},{type:'door',label:'Puerta'},
+      {type:'bar',label:'Barra'},{type:'kitchen',label:'Cocina'},{type:'plant',label:'Planta'},
+    ];
+  
+    return (
+      <div style={{display:'flex',flexDirection:'column',gap:0}}>
+        {/* Header */}
+        <div style={{background:'#111827',borderRadius:'12px 12px 0 0',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:'#fff'}}>🗺️ Plano del restaurante</div>
+            <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>
+              {freeCount} libres · {reservedCount} reservadas · {occupiedCount} ocupadas
+            </div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>setIsEditMode(!isEditMode)} style={{padding:'5px 12px',borderRadius:7,border:'1.5px solid',fontSize:11,fontWeight:700,cursor:'pointer',background:isEditMode?'#3b82f6':'rgba(255,255,255,0.1)',color:'#fff',borderColor:isEditMode?'#3b82f6':'rgba(255,255,255,0.2)'}}>
+              {isEditMode?'✓ Editar':'✏️ Editar'}
+            </button>
+            {isEditMode&&<button onClick={saveLayout} style={{padding:'5px 12px',borderRadius:7,border:'none',fontSize:11,fontWeight:700,cursor:'pointer',background:'#22c55e',color:'#fff'}}>
+              {savingFloor?'...':'💾 Guardar'}
+            </button>}
+          </div>
+        </div>
+  
+        {/* Zones */}
+        <div style={{background:'#1e2a3a',padding:'6px 12px',display:'flex',gap:6,overflowX:'auto'}}>
+          {zones.map(z=>(
+            <button key={z} onClick={()=>setZone(z)} style={{padding:'4px 12px',borderRadius:12,border:'1px solid',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',background:zone===z?'#fff':'transparent',color:zone===z?'#111827':'rgba(255,255,255,0.5)',borderColor:zone===z?'#fff':'rgba(255,255,255,0.2)'}}>
+              {z.charAt(0).toUpperCase()+z.slice(1)} ({tables.filter(tb=>layout[tb.id]?.zone===z).length})
+            </button>
+          ))}
+          <button onClick={addZone} style={{padding:'4px 12px',borderRadius:12,border:'1px dashed rgba(255,255,255,0.2)',fontSize:11,color:'rgba(255,255,255,0.4)',cursor:'pointer',background:'transparent',whiteSpace:'nowrap'}}>+ Zona</button>
+        </div>
+  
+        {/* Canvas */}
+        <div ref={wrapRef} style={{position:'relative',height:380,overflow:'hidden'}}>
+          <canvas
+            ref={canvasRef}
+            style={{display:'block',touchAction:'none',cursor:isEditMode?'grab':'pointer'}}
+            onTouchStart={handleCanvasTouch}
+            onTouchMove={handleCanvasTouchMove}
+            onTouchEnd={handleCanvasTouchEnd}
+            onClick={handleCanvasClick}
+            onMouseDown={e=>{
+              if(!isEditMode)return;
+              const rect=canvasRef.current.getBoundingClientRect();
+              const px=e.clientX-rect.left,py=e.clientY-rect.top;
+              const hit=hitTest(px,py);
+              if(hit){setDragId(hit.el.id);const pos=hit.type==='table'?layout[hit.el.id]:hit.el;dox.current=px-pos.x;doy.current=py-pos.y;}
+            }}
+            onMouseMove={e=>{
+              if(!dragId||!isEditMode)return;
+              const rect=canvasRef.current.getBoundingClientRect();
+              const nx=Math.max(0,e.clientX-rect.left-dox.current);
+              const ny=Math.max(0,e.clientY-rect.top-doy.current);
+              if(tables.find(tb=>tb.id===dragId)){setLayout(prev=>({...prev,[dragId]:{...prev[dragId],x:nx,y:ny}}));}
+              else{setDecorations(prev=>prev.map(d=>d.id===dragId?{...d,x:nx,y:ny}:d));}
+            }}
+            onMouseUp={()=>setDragId(null)}
+          />
+          {/* Legend */}
+          <div style={{position:'absolute',top:8,right:8,background:'rgba(17,24,39,0.8)',borderRadius:8,padding:'7px 10px',display:'flex',flexDirection:'column',gap:4}}>
+            {[{color:'#22c55e',label:'Libre'},{color:'#111827',label:'Reservada',border:'#6b7280'},{color:'#ef4444',label:'Ocupada'},{color:'#f59e0b',label:'Pendiente'}].map(l=>(
+              <div key={l.label} style={{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:600,color:'#fff'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:l.color,border:l.border?`1px solid ${l.border}`:undefined}}/>
+                {l.label}
+              </div>
+            ))}
+          </div>
+        </div>
+  
+        {/* Edit mode toolbar */}
+        {isEditMode&&(
+          <div style={{background:'#1e2a3a',padding:'8px 10px',display:'flex',gap:6,overflowX:'auto'}}>
+            <span style={{fontSize:10,color:'rgba(255,255,255,0.4)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',alignSelf:'center',flexShrink:0}}>Añadir:</span>
+            {TOOLS.map(({type,label})=>(
+              <button key={type} onClick={()=>addDecoration(type)} style={{padding:'5px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.7)',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>
+                {label}
+              </button>
+            ))}
+            {selId&&!tables.find(tb=>tb.id===selId)&&(
+              <button onClick={deleteSelected} style={{padding:'5px 10px',borderRadius:8,border:'1px solid #ef4444',background:'rgba(239,68,68,0.15)',color:'#ef4444',fontSize:11,fontWeight:700,cursor:'pointer',marginLeft:'auto',flexShrink:0}}>
+                🗑 Eliminar
+              </button>
+            )}
+          </div>
+        )}
+  
+        {/* Selected table info */}
+        {selectedTableInfo&&!isEditMode&&(()=>{
+          const tb = selectedTableInfo;
+          const statusKey = getTableDisplayStatus(tb);
+          const todayR = getTodayReservation(tb.id);
+          const statusColors = {
+            free:{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0',label:'Libre'},
+            reserved:{bg:'#fffbeb',color:'#d97706',border:'#fde68a',label:'Reservada'},
+            occupied:{bg:'#fef2f2',color:'#ef4444',border:'#fecaca',label:'Ocupada'},
+            pending:{bg:'#fffbeb',color:'#d97706',border:'#fde68a',label:'Pendiente'},
+            blocked:{bg:'#f3f4f6',color:'#6b7280',border:'#e5e7eb',label:'Bloqueada'},
+          };
+          const sc = statusColors[statusKey] || statusColors.free;
+          return (
+            <div style={{background:'#fff',border:'1px solid #e5e7eb',borderRadius:'0 0 12px 12px',padding:'14px 16px'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{fontSize:22,fontWeight:800,color:'#111827'}}>{tb.label}</div>
+                  <div>
+                    <div style={{fontSize:12,color:'#6b7280'}}>{tb.capacity} personas</div>
+                    {todayR&&<div style={{fontSize:11,color:'#9ca3af'}}>{todayR.time} · {todayR.guests}p · {todayR.customer_name}</div>}
+                  </div>
+                </div>
+                <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700}}>{sc.label}</span>
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                {statusKey!=='occupied'&&statusKey!=='blocked'&&(
+                  <button onClick={async()=>{await onUpdateTableStatus(tb.id,'occupied');setSelectedTableInfo(null);setSelId(null);}} style={{flex:1,padding:'7px',borderRadius:8,border:'1px solid #fecaca',background:'#fef2f2',color:'#ef4444',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    🔴 Ocupar
+                  </button>
+                )}
+                {(statusKey==='occupied'||statusKey==='blocked')&&(
+                  <button onClick={async()=>{await onUpdateTableStatus(tb.id,'free');setSelectedTableInfo(null);setSelId(null);}} style={{flex:1,padding:'7px',borderRadius:8,border:'1px solid #bbf7d0',background:'#f0fdf4',color:'#16a34a',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    🟢 Liberar
+                  </button>
+                )}
+                {statusKey!=='blocked'&&(
+                  <button onClick={async()=>{await onUpdateTableStatus(tb.id,'blocked');setSelectedTableInfo(null);setSelId(null);}} style={{flex:1,padding:'7px',borderRadius:8,border:'1px solid #e5e7eb',background:'#f3f4f6',color:'#6b7280',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    ⚫ Bloquear
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  }
 export default function App() {
 const [lang,setLang] = useState(()=>localStorage.getItem('reservia_lang')||'es');
 const t = TRANSLATIONS[lang];
@@ -168,7 +679,7 @@ const nav = useMemo(()=>[
 {id:"overview",Icon:LayoutDashboard,label:t.overview,badge:pendingCount},
 {id:"reservations",Icon:CalendarDays,label:t.reservations,badge:unseenCount},
 {id:"calendar",Icon:Calendar,label:t.calendar,badge:0},
-{id:"tables",Icon:Grid,label:t.tables,badge:0},
+{id:"floor",Icon:Grid,label:"Plano",badge:0},
 {id:"stats",Icon:BarChart2,label:t.stats,badge:0},
 {id:"whatsapp",Icon:MessageCircle,label:t.whatsapp,badge:0},
 {id:"conversations",Icon:MessageCircle,label:t.conversations,badge:0},
@@ -312,6 +823,13 @@ setSaving(false);showToast('✓ Configuración avanzada guardada');
 async function saveTable(id){setSaving(true);await supabase.from("tables").update({label:tableForm.label,capacity:parseInt(tableForm.capacity)}).eq("id",id);await loadSettings();setEditingTable(null);setSaving(false);showSaveMsg(t.tableUpdated);}
 async function addTable(){if(!newTable.label||!newTable.capacity)return;setSaving(true);await supabase.from("tables").insert([{restaurant_id:RESTAURANT_ID,label:newTable.label,capacity:parseInt(newTable.capacity),active:true,manual_status:"available"}]);setNewTable({label:"",capacity:""});setAddingTable(false);await loadSettings();setSaving(false);showSaveMsg(t.tableAdded);}
 async function deleteTable(id){if(!confirm(t.deleteTable))return;await supabase.from("tables").delete().eq("id",id);await loadSettings();showSaveMsg(t.tableDeleted);}
+async function updateTableStatusOp(id,status){
+    await supabase.from("tables").update({
+      status,
+      manual_status:status==='occupied'?'occupied':status==='blocked'?'blocked':'available'
+    }).eq("id",id);
+    await loadSettings();
+  }
 async function setTableManualStatus(id,status){await supabase.from("tables").update({manual_status:status}).eq("id",id);await loadSettings();}
 function toggleOpenDay(day){setOpenDays(prev=>prev.includes(day)?prev.filter(d=>d!==day):[...prev,day]);}
 function addShift(){if(!newShift.name||!newShift.start||!newShift.end)return;setShifts(prev=>[...prev,{...newShift,id:Date.now().toString()}]);setNewShift({name:'',start:'',end:''});setAddingShift(false);}
@@ -772,41 +1290,15 @@ return(
 )}
 
 {/* TABLES */}
-{tab==="tables"&&(
-<div>
-<div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-{[{color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0",label:t.free},{color:"#d97706",bg:"#fffbeb",border:"#fde68a",label:t.reserved},{color:"#dc2626",bg:"#fef2f2",border:"#fecaca",label:t.occupied},{color:"#6b7280",bg:"#f3f4f6",border:"#e5e7eb",label:t.blocked}].map((s,i)=>(
-<div key={i} style={{display:"flex",alignItems:"center",gap:6,background:s.bg,padding:"5px 12px",borderRadius:20,border:"1px solid "+s.border}}>
-<div style={{width:7,height:7,borderRadius:"50%",background:s.color}}/>
-<span style={{fontSize:12,color:s.color,fontWeight:600}}>{s.label}</span>
-</div>
-))}
-<div style={{marginLeft:"auto",fontSize:12,color:"#9ca3af",alignSelf:"center"}}>{freeTables} {t.free.toLowerCase()} · {tables.length} total</div>
-</div>
-<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
-{tables.map(table=>{const status=getTableStatus(table);const isOccupied=table.manual_status==='occupied',isBlocked=table.manual_status==='blocked';return(
-<div key={table.id} className="mesa-card" style={{background:status.bg,borderColor:status.border}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-<div><div style={{fontSize:14,fontWeight:700,color:"#111827"}}>{table.label}</div><div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{table.capacity} {lang==='ca'?'persones':'personas'}</div></div>
-<div style={{width:8,height:8,borderRadius:"50%",background:status.dot,marginTop:4,flexShrink:0}}/>
-</div>
-<div style={{fontSize:11,fontWeight:600,color:status.color}}>{status.label}</div>
-{status.reservation&&(
-<div style={{fontSize:11,color:"#374151",background:"#fff",padding:"5px 8px",borderRadius:6,border:"1px solid #f3f4f6"}}>
-<div style={{fontWeight:600}}>{status.reservation.customer_name}</div>
-<div style={{color:"#9ca3af"}}>{status.reservation.time} · {status.reservation.guests}p</div>
-</div>
-)}
-<div style={{display:"flex",gap:5,marginTop:2}}>
-{!isBlocked&&!isOccupied&&<button className="btn btn-red" style={{fontSize:11,flex:1}} onClick={()=>setTableManualStatus(table.id,'occupied')}>{t.occupy}</button>}
-{isOccupied&&<button className="btn btn-green" style={{fontSize:11,flex:1}} onClick={()=>setTableManualStatus(table.id,'available')}>{t.release}</button>}
-{!isBlocked&&!isOccupied&&<button className="btn btn-gray" style={{fontSize:11,flex:1}} onClick={()=>setTableManualStatus(table.id,'blocked')}>{t.block}</button>}
-{isBlocked&&<button className="btn btn-green" style={{fontSize:11,flex:1}} onClick={()=>setTableManualStatus(table.id,'available')}>{t.release}</button>}
-</div>
-</div>
-);})}
-</div>
-</div>
+{tab==="floor"&&(
+  <FloorPlanTab
+    tables={tables}
+    reservations={reservations}
+    today={today}
+    t={t}
+    lang={lang}
+    onUpdateTableStatus={updateTableStatusOp}
+  />
 )}
 
 {/* STATS */}
